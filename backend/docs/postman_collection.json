@@ -1,0 +1,115 @@
+{
+  "info": {
+    "name": "Pan India E-Commerce API (Customer & Admin)",
+    "description": "Complete REST API collection for Bharat Bazaar Pan-India E-Commerce platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Auth",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@appecom.in\",\n  \"password\": \"Admin@12345\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/admin/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Admin Me (Profile)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/admin/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "auth", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Analytics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/admin/dashboard?timeframe=30d", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "dashboard"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Orders",
+      "item": [
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/admin/orders?page=1&limit=15", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "orders"] }
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Processing\",\n  \"note\": \"Packed in warehouse\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/admin/orders/:id/status", "host": ["{{baseUrl}}"], "path": ["api", "v1", "admin", "orders", ":id", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customer Auth (React Native App)",
+      "item": [
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"9812345678\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/send-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "send-otp"] }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"9812345678\",\n  \"otp\": \"123456\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "verify-otp"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pan India Delivery",
+      "item": [
+        {
+          "name": "Check Serviceability",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/delivery/check-pincode/560103?orderAmount=650", "host": ["{{baseUrl}}"], "path": ["api", "delivery", "check-pincode", "560103"] }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "adminToken", "value": "" }
+  ]
+}
+
