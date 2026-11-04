@@ -31,19 +31,18 @@ const getAddressById = asyncHandler(async (req, res) => {
  * POST /api/addresses
  */
 const createAddress = asyncHandler(async (req, res) => {
-  const {
-    fullName,
-    phone,
-    alternatePhone,
-    addressLine1,
-    addressLine2,
-    landmark,
-    city,
-    state,
-    pinCode,
-    addressType,
-    isDefault,
-  } = req.body;
+  const fullName = req.body.fullName;
+  const mobileNumber = req.body.mobileNumber || req.body.phone;
+  const alternateMobileNumber = req.body.alternateMobileNumber || req.body.alternatePhone || '';
+  const addressLine1 = req.body.addressLine1 || req.body.streetAddress;
+  const addressLine2 = req.body.addressLine2 || '';
+  const landmark = req.body.landmark || '';
+  const city = req.body.city;
+  const state = req.body.state;
+  const pinCode = (req.body.pinCode || req.body.pincode || '').toString().trim();
+  const rawType = (req.body.addressType || 'Home').toString();
+  const addressType = rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase();
+  const isDefault = req.body.isDefault;
 
   // Validate Indian PIN code
   if (!shippingService.isValidPinCode(pinCode)) {
@@ -70,15 +69,15 @@ const createAddress = asyncHandler(async (req, res) => {
   const address = await Address.create({
     user: req.user._id,
     fullName,
-    phone,
-    alternatePhone,
+    mobileNumber,
+    alternateMobileNumber,
     addressLine1,
     addressLine2,
     landmark,
     city: enrichedCity,
     state: enrichedState,
     pinCode,
-    addressType: addressType || 'home',
+    addressType,
     isDefault: shouldBeDefault,
   });
 
@@ -96,15 +95,41 @@ const updateAddress = asyncHandler(async (req, res) => {
     return errorResponse(res, 'Address not found', 404);
   }
 
-  if (req.body.pinCode && !shippingService.isValidPinCode(req.body.pinCode)) {
-    return errorResponse(res, 'Invalid 6-digit Indian PIN code', 400);
+  const updateData = {};
+  if (req.body.fullName) updateData.fullName = req.body.fullName;
+  if (req.body.mobileNumber || req.body.phone) {
+    updateData.mobileNumber = req.body.mobileNumber || req.body.phone;
+  }
+  if (req.body.alternateMobileNumber || req.body.alternatePhone) {
+    updateData.alternateMobileNumber = req.body.alternateMobileNumber || req.body.alternatePhone;
+  }
+  if (req.body.addressLine1 || req.body.streetAddress) {
+    updateData.addressLine1 = req.body.addressLine1 || req.body.streetAddress;
+  }
+  if (req.body.addressLine2 !== undefined) updateData.addressLine2 = req.body.addressLine2;
+  if (req.body.landmark !== undefined) updateData.landmark = req.body.landmark;
+  if (req.body.city) updateData.city = req.body.city;
+  if (req.body.state) updateData.state = req.body.state;
+  if (req.body.pinCode || req.body.pincode) {
+    const pin = (req.body.pinCode || req.body.pincode).toString().trim();
+    if (!shippingService.isValidPinCode(pin)) {
+      return errorResponse(res, 'Invalid 6-digit Indian PIN code', 400);
+    }
+    updateData.pinCode = pin;
+  }
+  if (req.body.addressType) {
+    const rawType = req.body.addressType.toString();
+    updateData.addressType = rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase();
+  }
+  if (req.body.isDefault !== undefined) {
+    updateData.isDefault = req.body.isDefault;
   }
 
-  if (req.body.isDefault) {
+  if (updateData.isDefault) {
     await Address.updateMany({ user: req.user._id, _id: { $ne: address._id } }, { isDefault: false });
   }
 
-  address = await Address.findByIdAndUpdate(req.params.id, req.body, {
+  address = await Address.findByIdAndUpdate(req.params.id, updateData, {
     new: true,
     runValidators: true,
   });

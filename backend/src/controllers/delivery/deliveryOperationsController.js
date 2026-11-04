@@ -9,7 +9,9 @@ const DeliveryEarning = require('../../models/DeliveryEarning');
 const Order = require('../../models/Order');
 const SellerOrder = require('../../models/SellerOrder');
 const Seller = require('../../models/Seller');
+const { calculateDistanceKm, calculateEtaMinutes } = require('../../utils/geoUtils');
 const { emitToSeller, emitToAdmins, emitToTrackingRoom, emitOrderStatusUpdated } = require('../../sockets/socketManager');
+const { syncParentOrderStatus } = require('../../utils/orderSync');
 
 /**
  * Toggle Online / Offline Availability
@@ -358,6 +360,36 @@ const declineRequest = async (req, res) => {
     assignment.declineReason = reason || 'Rider currently unavailable for this route';
     await assignment.save();
 
+    // Revert SellerOrder to ready_for_pickup so seller can reassign
+    try {
+      await SellerOrder.findOneAndUpdate(
+        {
+          $or: [
+            { orderNumber: assignment.orderNumber },
+            { subOrderNumber: assignment.orderNumber },
+            { order: assignment.order },
+          ],
+        },
+        {
+          $set: {
+            status: 'ready_for_pickup',
+            deliveryPartner: null,
+            deliveryPartnerName: '',
+            deliveryPartnerPhone: '',
+            deliveryAssignment: null,
+          },
+        }
+      );
+    } catch (soErr) {
+      console.warn('Revert SellerOrder on decline error:', soErr?.message);
+    }
+
+    // Decrement current active deliveries if it was incremented
+    await DeliveryPartner.findByIdAndUpdate(partnerId, {
+      $inc: { currentActiveDeliveries: -1 },
+      $pull: { assignedTasks: { orderNumber: assignment.orderNumber } },
+    }).catch(() => {});
+
     // Notify seller so they can reassign immediately
     emitToSeller(assignment.seller, 'delivery:assignment_declined', {
       assignmentId: assignment.assignmentId,
@@ -516,6 +548,24 @@ const verifyPickupOtp = async (req, res) => {
     });
     await delivery.save();
 
+    // Synchronize SellerOrder and Parent Order
+    try {
+      await SellerOrder.updateMany(
+        { $or: [{ order: delivery.order }, { orderNumber: delivery.orderNumber }] },
+        {
+          $set: {
+            status: 'picked_up',
+            pickedUpAt: delivery.pickupVerifiedAt,
+            'shipping.pickedUpAt': delivery.pickupVerifiedAt,
+          },
+        }
+      );
+
+      await syncParentOrderStatus(delivery.order || delivery.orderNumber);
+    } catch (syncErr) {
+      console.warn('Pickup sync warning:', syncErr?.message);
+    }
+
     emitToSeller(delivery.seller, 'delivery:order_picked_up', {
       deliveryNumber: delivery.deliveryNumber,
       orderNumber: delivery.orderNumber,
@@ -556,6 +606,23 @@ const outForDelivery = async (req, res) => {
       timestamp: new Date(),
     });
     await delivery.save();
+
+    // Synchronize SellerOrder and Parent Order
+    try {
+      await SellerOrder.updateMany(
+        { $or: [{ order: delivery.order }, { orderNumber: delivery.orderNumber }] },
+        {
+          $set: {
+            status: 'out_for_delivery',
+            outForDeliveryAt: new Date(),
+          },
+        }
+      );
+
+      await syncParentOrderStatus(delivery.order || delivery.orderNumber);
+    } catch (syncErr) {
+      console.warn('Out for delivery sync warning:', syncErr?.message);
+    }
 
     emitToSeller(delivery.seller, 'delivery:out_for_delivery', {
       deliveryNumber: delivery.deliveryNumber,
@@ -747,6 +814,12 @@ const verifyDeliveryOtp = async (req, res) => {
         { $set: sellerOrderUpdate }
       );
 
+      try {
+        await syncParentOrderStatus(delivery.order || delivery.orderNumber);
+      } catch (syncErr) {
+        console.warn('Delivery complete sync warning:', syncErr?.message);
+      }
+
       // Credit Seller Wallet with Net Earnings (Order Value - 10% Commission)
       const linkedSellerOrders = await SellerOrder.find({
         $or: [{ order: delivery.order }, { orderNumber: delivery.orderNumber }],
@@ -841,18 +914,19 @@ const reportDeliveryFailure = async (req, res) => {
  */
 const updateLocation = async (req, res) => {
   try {
-    const { latitude, longitude, addressText, activeOrderId } = req.body;
+    const { latitude, longitude, heading = 0, speed = 0, addressText, activeOrderId, deliveryId } = req.body;
 
     if (!latitude || !longitude) {
       return res.status(400).json({ success: false, message: 'Coordinates are required' });
     }
 
+    const partnerId = req.deliveryPartner._id;
     const partner = await DeliveryPartner.findByIdAndUpdate(
-      req.deliveryPartner._id,
+      partnerId,
       {
         $set: {
-          'currentLocation.latitude': latitude,
-          'currentLocation.longitude': longitude,
+          'currentLocation.latitude': Number(latitude),
+          'currentLocation.longitude': Number(longitude),
           'currentLocation.addressText': addressText || 'In Transit',
           'currentLocation.updatedAt': new Date(),
         },
@@ -860,21 +934,145 @@ const updateLocation = async (req, res) => {
       { new: true }
     );
 
-    // If rider has an active delivery or active order, emit to tracking room
-    if (activeOrderId) {
-      emitToTrackingRoom(activeOrderId, 'delivery:location_updated', {
-        latitude,
-        longitude,
+    // Look for active delivery for this rider
+    let delivery = null;
+    if (deliveryId) {
+      delivery = await Delivery.findOne({
+        $or: [{ _id: deliveryId }, { deliveryNumber: deliveryId }],
+        deliveryPartner: partnerId,
+      });
+    } else if (activeOrderId) {
+      delivery = await Delivery.findOne({
+        $or: [{ orderNumber: activeOrderId }, { order: activeOrderId }],
+        deliveryPartner: partnerId,
+      });
+    } else {
+      delivery = await Delivery.findOne({
+        deliveryPartner: partnerId,
+        status: {
+          $in: ['assigned', 'accepted', 'reached_pickup', 'picked_up', 'out_for_delivery', 'reached_customer'],
+        },
+      }).sort({ updatedAt: -1 });
+    }
+
+    let remainingKm = 2.5;
+    let etaMinutes = 10;
+    let targetOrderId = activeOrderId;
+
+    if (delivery) {
+      targetOrderId = delivery.orderNumber || delivery.order?.toString();
+      delivery.currentLocation = {
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        heading: Number(heading),
+        speed: Number(speed),
+        updatedAt: new Date(),
+      };
+
+      // Destination depends on whether order is on pickup leg or doorstep delivery leg
+      const isOnDeliveryLeg = ['picked_up', 'out_for_delivery', 'reached_customer'].includes(delivery.status);
+      const destLat = isOnDeliveryLeg
+        ? delivery.deliveryAddress?.latitude || 26.9015
+        : delivery.pickupAddress?.latitude || 26.9124;
+      const destLon = isOnDeliveryLeg
+        ? delivery.deliveryAddress?.longitude || 75.7421
+        : delivery.pickupAddress?.longitude || 75.7873;
+
+      remainingKm = calculateDistanceKm(Number(latitude), Number(longitude), destLat, destLon);
+      etaMinutes = calculateEtaMinutes(remainingKm, partner.vehicleType);
+
+      delivery.distanceRemaining = remainingKm;
+      delivery.estimatedMinutes = etaMinutes;
+      await delivery.save();
+
+      // Update parent Order
+      try {
+        const orderFilter = delivery.order
+          ? { _id: delivery.order }
+          : { $or: [{ orderId: targetOrderId }, { orderNumber: targetOrderId }] };
+
+        const orderUpdates = {
+          'currentLocation.latitude': Number(latitude),
+          'currentLocation.longitude': Number(longitude),
+          'currentLocation.heading': Number(heading),
+          'currentLocation.speed': Number(speed),
+          'currentLocation.updatedAt': new Date(),
+          distanceRemainingKm: remainingKm,
+          estimatedMinutesRemaining: etaMinutes,
+        };
+
+        // If rider is less than 400m from customer doorstep and order is out_for_delivery, mark nearing_destination
+        if (isOnDeliveryLeg && remainingKm <= 0.4 && delivery.status === 'out_for_delivery') {
+          orderUpdates.orderStatus = 'nearing_destination';
+        }
+
+        const updatedOrder = await Order.findOneAndUpdate(orderFilter, { $set: orderUpdates }, { new: true });
+
+        // Update SellerOrder
+        await SellerOrder.updateMany(
+          { $or: [{ order: delivery.order }, { orderNumber: targetOrderId }] },
+          {
+            $set: {
+              'currentLocation.latitude': Number(latitude),
+              'currentLocation.longitude': Number(longitude),
+              'currentLocation.updatedAt': new Date(),
+            },
+          }
+        );
+
+        if (updatedOrder && delivery.seller) {
+          emitToSeller(delivery.seller, 'delivery:location_updated', {
+            orderId: updatedOrder.orderId || targetOrderId,
+            orderNumber: updatedOrder.orderNumber,
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+            riderName: partner.name,
+            distanceRemainingKm: remainingKm,
+            etaMinutes,
+            updatedAt: new Date(),
+          });
+        }
+      } catch (orderErr) {
+        console.warn('Update order location error:', orderErr?.message);
+      }
+    }
+
+    // Broadcast live location to order tracking room
+    if (targetOrderId) {
+      emitToTrackingRoom(targetOrderId, 'delivery:location_updated', {
+        orderId: targetOrderId,
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        heading: Number(heading),
+        speed: Number(speed),
         riderName: partner.name,
+        riderPhone: partner.phone,
+        vehicleType: partner.vehicleType,
+        vehicleNumber: partner.vehicleNumber,
+        distanceRemainingKm: remainingKm,
+        etaMinutes,
+        updatedAt: new Date(),
+      });
+
+      emitToTrackingRoom(targetOrderId, 'delivery:eta_updated', {
+        orderId: targetOrderId,
+        etaMinutes,
+        distanceRemainingKm: remainingKm,
         updatedAt: new Date(),
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: { location: partner.currentLocation },
+      data: {
+        location: partner.currentLocation,
+        distanceRemainingKm: remainingKm,
+        etaMinutes,
+        activeOrderId: targetOrderId,
+      },
     });
   } catch (error) {
+    console.error('Update Location Error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

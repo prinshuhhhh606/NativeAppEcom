@@ -3,11 +3,16 @@ const Product = require('../../models/Product');
 const User = require('../../models/User');
 const Seller = require('../../models/Seller');
 const DeliveryPartner = require('../../models/DeliveryPartner');
+const Delivery = require('../../models/Delivery');
+const DeliveryAssignment = require('../../models/DeliveryAssignment');
 const SellerOrder = require('../../models/SellerOrder');
 const Category = require('../../models/Category');
 const ReturnRequest = require('../../models/ReturnRequest');
 const Payment = require('../../models/Payment');
 const Refund = require('../../models/Refund');
+const Payout = require('../../models/Payout');
+const DeliveryPayout = require('../../models/DeliveryPayout');
+const Franchise = require('../../models/Franchise');
 const asyncHandler = require('../../utils/asyncHandler');
 const { successResponse } = require('../../utils/apiResponse');
 
@@ -16,158 +21,216 @@ const { successResponse } = require('../../utils/apiResponse');
  * GET /api/v1/admin/dashboard
  */
 const getDashboardMetrics = asyncHandler(async (req, res) => {
-  const { timeframe = '30d', startDate, endDate } = req.query;
+  const { timeframe = '30d', filterType = 'monthly' } = req.query;
 
-  // Determine date boundary
+  // Determine date boundaries
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   let filterStartDate;
-  if (startDate) {
-    filterStartDate = new Date(startDate);
-  } else if (timeframe === 'today') {
+  if (timeframe === 'today' || filterType === 'daily') {
     filterStartDate = startOfToday;
-  } else if (timeframe === '7d') {
+  } else if (timeframe === '7d' || filterType === 'weekly') {
     filterStartDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  } else if (timeframe === '30d') {
+  } else if (timeframe === '30d' || filterType === 'monthly') {
     filterStartDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  } else if (timeframe === 'this_month') {
-    filterStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (timeframe === '1y' || filterType === 'yearly') {
+    filterStartDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
   } else {
     filterStartDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   }
 
-  // 1. Parallel Overview Aggregations
+  // 1. Parallel Overview Aggregations (18 KPIs)
   const [
-    totalOrders,
-    todayOrders,
-    pendingOrders,
-    processingOrders,
-    shippedOrders,
-    deliveredOrders,
-    cancelledOrders,
-    totalCustomers,
-    todayCustomers,
-    totalProducts,
-    lowStockProducts,
-    outOfStockProducts,
-    totalCategories,
-    refundRequestsCount,
+    // Revenue
     revenueAgg,
     todayRevenueAgg,
-    recentOrders,
-    recentCustomers,
-    recentTransactions,
+    // Orders by status
+    totalOrders,
+    pendingOrders,
+    activeOrders,
+    completedOrders,
+    cancelledOrders,
+    // Customers
+    totalCustomers,
+    activeCustomers,
+    // Sellers
     totalSellers,
-    pendingSellers,
-    totalRiders,
-    pendingRiders,
+    activeSellers,
+    // Franchises
+    totalFranchises,
+    // Delivery Fleet
+    totalDeliveryBoys,
+    activeDeliveryBoys,
+    pendingDeliveryRequests,
+    // Financials: Commission, Payouts, Refunds
     sellerFinanceAgg,
-    riderWalletAgg,
-    refundsAgg,
+    pendingSellerPayouts,
+    pendingRiderPayouts,
+    refundRequestsCount,
+    // Recent feeds
+    recentOrders,
+    recentRegistrations,
+    recentTransactions,
+    // Live Deliveries
+    liveActiveDeliveries,
   ] = await Promise.all([
-    Order.countDocuments(),
-    Order.countDocuments({ createdAt: { $gte: startOfToday } }),
-    Order.countDocuments({ orderStatus: { $in: ['Pending', 'Confirmed'] } }),
-    Order.countDocuments({ orderStatus: { $in: ['Processing', 'Packed'] } }),
-    Order.countDocuments({ orderStatus: { $in: ['Shipped', 'OutForDelivery'] } }),
-    Order.countDocuments({ orderStatus: 'Delivered' }),
-    Order.countDocuments({ orderStatus: 'Cancelled' }),
-    User.countDocuments({ role: 'customer' }),
-    User.countDocuments({ role: 'customer', createdAt: { $gte: startOfToday } }),
-    Product.countDocuments({ isActive: true }),
-    Product.countDocuments({ isActive: true, stock: { $gt: 0, $lte: 10 } }),
-    Product.countDocuments({ isActive: true, stock: 0 }),
-    Category.countDocuments({ isActive: true }),
-    ReturnRequest.countDocuments({ status: 'Pending' }),
     // Total Revenue (excluding cancelled)
     Order.aggregate([
       { $match: { orderStatus: { $ne: 'Cancelled' } } },
-      { $group: { _id: null, total: { $sum: '$pricing.grandTotal' } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $ifNull: ['$totalAmount', { $ifNull: ['$pricing.grandTotal', 0] }],
+            },
+          },
+        },
+      },
     ]),
     // Today's Revenue
     Order.aggregate([
       { $match: { orderStatus: { $ne: 'Cancelled' }, createdAt: { $gte: startOfToday } } },
-      { $group: { _id: null, total: { $sum: '$pricing.grandTotal' } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $ifNull: ['$totalAmount', { $ifNull: ['$pricing.grandTotal', 0] }],
+            },
+          },
+        },
+      },
     ]),
+    // Orders
+    Order.countDocuments(),
+    Order.countDocuments({
+      orderStatus: { $in: ['Placed', 'Pending', 'Confirmed', 'Accepted', 'seller_accepted', 'Preparing', 'preparing'] },
+    }),
+    Order.countDocuments({
+      orderStatus: {
+        $in: [
+          'ready_for_pickup',
+          'Ready for Pickup',
+          'pickup_scheduled',
+          'delivery_partner_assigned',
+          'picked_up',
+          'Picked Up',
+          'Shipped',
+          'shipped',
+          'in_transit',
+          'out_for_delivery',
+          'OutForDelivery',
+          'reached_customer',
+        ],
+      },
+    }),
+    Order.countDocuments({ orderStatus: { $in: ['Delivered', 'delivered', 'completed'] } }),
+    Order.countDocuments({ orderStatus: { $in: ['Cancelled', 'cancelled', 'Rejected', 'rejected'] } }),
+    // Customers
+    User.countDocuments({ role: 'customer' }),
+    User.countDocuments({ role: 'customer', isActive: true }),
+    // Sellers
+    Seller.countDocuments(),
+    Seller.countDocuments({ status: 'approved', isActive: true }),
+    // Franchises
+    Franchise.countDocuments(),
+    // Delivery Fleet
+    DeliveryPartner.countDocuments(),
+    DeliveryPartner.countDocuments({ isAvailable: true, kycStatus: 'approved' }),
+    DeliveryAssignment.countDocuments({ status: 'requested' }),
+    // Total Commission from SellerOrders
+    SellerOrder.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } },
+      { $group: { _id: null, totalCommission: { $sum: '$commissionAmount' } } },
+    ]),
+    // Pending Seller Payouts
+    Payout.countDocuments({ status: { $in: ['pending', 'requested'] } }),
+    // Pending Rider Payouts
+    DeliveryPayout.countDocuments({ status: { $in: ['pending', 'requested'] } }),
+    // Refund Requests
+    ReturnRequest.countDocuments({ status: { $in: ['Pending', 'requested'] } }),
     // Recent 6 Orders
     Order.find()
       .sort({ createdAt: -1 })
       .limit(6)
-      .select('orderId shippingAddress.fullName pricing.grandTotal orderStatus paymentMethod createdAt'),
-    // Recent 5 Customers
+      .select('orderId orderNumber deliveryAddress shippingAddress totalAmount pricing orderStatus paymentMethod createdAt')
+      .lean(),
+    // Recent 5 Customer Registrations
     User.find({ role: 'customer' })
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('name email phone avatar createdAt'),
-    // Recent 5 Payments
+      .select('fullName name email phone mobileNumber avatar createdAt isActive')
+      .lean(),
+    // Recent 5 Transactions / Payments
     Payment.find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate('order', 'orderId'),
-    // Sellers & Riders
-    Seller.countDocuments({ status: 'approved' }),
-    Seller.countDocuments({ status: { $in: ['pending_verification', 'under_review'] } }),
-    DeliveryPartner.countDocuments({ kycStatus: 'approved' }),
-    DeliveryPartner.countDocuments({ kycStatus: { $in: ['pending', 'under_review'] } }),
-    // Platform Commission & Seller Earnings
-    SellerOrder.aggregate([
-      { $match: { status: { $ne: 'cancelled' } } },
-      {
-        $group: {
-          _id: null,
-          gmv: { $sum: '$subtotal' },
-          commission: { $sum: '$commissionAmount' },
-          sellerPayable: { $sum: '$netEarnings' },
-        },
-      },
-    ]),
-    // Rider Available Balance
-    DeliveryPartner.aggregate([
-      { $group: { _id: null, totalRiderBalance: { $sum: '$earnings.available' } } },
-    ]),
-    // Refunds
-    Refund.aggregate([
-      { $match: { status: 'Processed' } },
-      { $group: { _id: null, totalRefunded: { $sum: '$amount' } } },
-    ]),
+      .populate('order', 'orderId orderNumber')
+      .lean(),
+    // Live Active Deliveries (with coordinates)
+    Delivery.find({
+      status: { $in: ['assigned', 'reached_pickup', 'picked_up', 'in_transit', 'out_for_delivery', 'reached_customer'] },
+    })
+      .sort({ updatedAt: -1 })
+      .limit(6)
+      .populate('deliveryPartner', 'name phone vehicleType vehicleNumber rating currentLocation')
+      .populate('order', 'orderId orderNumber deliveryAddress')
+      .lean(),
   ]);
 
   const totalRevenue = revenueAgg[0]?.total || 0;
   const todayRevenue = todayRevenueAgg[0]?.total || 0;
-  const platformCommission = sellerFinanceAgg[0]?.commission || 0;
-  const sellerPayable = sellerFinanceAgg[0]?.sellerPayable || 0;
-  const riderPayable = riderWalletAgg[0]?.totalRiderBalance || 0;
-  const totalRefunds = refundsAgg[0]?.totalRefunded || 0;
+  const totalCommission = sellerFinanceAgg[0]?.totalCommission || 0;
+  const pendingPayouts = pendingSellerPayouts + pendingRiderPayouts;
 
-  // 2. Revenue & Orders Time-Series Analytics (Aggregated by Day)
+  // 2. Revenue & Orders Time-Series Analytics
   const chartAgg = await Order.aggregate([
     {
       $match: {
         createdAt: { $gte: filterStartDate },
-        orderStatus: { $ne: 'Cancelled' },
+        orderStatus: { $nin: ['Cancelled', 'cancelled', 'Rejected', 'rejected'] },
       },
     },
     {
       $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        revenue: { $sum: '$pricing.grandTotal' },
+        revenue: {
+          $sum: { $ifNull: ['$totalAmount', { $ifNull: ['$pricing.grandTotal', 0] }] },
+        },
         orders: { $sum: 1 },
       },
     },
     { $sort: { _id: 1 } },
   ]);
 
-  // Format chart data with full dates
   const salesChart = chartAgg.map((item) => ({
     date: item._id,
     revenue: item.revenue,
     orders: item.orders,
   }));
 
-  // 3. Best Selling Products
+  // 3. Customer Growth Time-Series
+  const customerGrowthAgg = await User.aggregate([
+    {
+      $match: {
+        role: 'customer',
+        createdAt: { $gte: filterStartDate },
+      },
+    },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        newCustomers: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  // 4. Top Selling Products
   const bestSellersAgg = await Order.aggregate([
-    { $match: { orderStatus: { $ne: 'Cancelled' } } },
+    { $match: { orderStatus: { $nin: ['Cancelled', 'cancelled'] } } },
     { $unwind: '$items' },
     {
       $group: {
@@ -179,66 +242,93 @@ const getDashboardMetrics = asyncHandler(async (req, res) => {
       },
     },
     { $sort: { totalSold: -1 } },
+    { $limit: 6 },
+  ]);
+
+  // 5. Top Performing Sellers
+  const topSellersAgg = await SellerOrder.aggregate([
+    { $match: { status: { $nin: ['cancelled', 'rejected'] } } },
+    {
+      $group: {
+        _id: '$seller',
+        storeName: { $first: '$sellerStoreName' },
+        ordersCount: { $sum: 1 },
+        totalSales: { $sum: '$subtotal' },
+        commissionGenerated: { $sum: '$commissionAmount' },
+      },
+    },
+    { $sort: { totalSales: -1 } },
     { $limit: 5 },
   ]);
 
-  // 4. Low-stock products list for alert widget
-  const lowStockList = await Product.find({ isActive: true, stock: { $lte: 10 } })
-    .select('name sku stock price images category')
-    .populate('category', 'name')
-    .sort({ stock: 1 })
-    .limit(8);
+  // 6. Delivery Performance Analytics
+  const topRiders = await DeliveryPartner.find({ kycStatus: 'approved' })
+    .sort({ 'earnings.totalDeliveries': -1 })
+    .limit(5)
+    .select('name phone vehicleType rating earnings isAvailable')
+    .lean();
 
   return successResponse(
     res,
     {
       overview: {
+        // The 18 Dashboard overview cards:
         totalRevenue,
         todayRevenue,
         totalOrders,
-        todayOrders,
         pendingOrders,
-        processingOrders,
-        shippedOrders,
-        deliveredOrders,
+        activeOrders,
+        completedOrders,
         cancelledOrders,
         totalCustomers,
-        todayCustomers,
-        totalProducts,
-        lowStockProducts,
-        outOfStockProducts,
-        totalCategories,
-        refundRequestsCount,
+        activeCustomers,
         totalSellers,
-        pendingSellers,
-        totalRiders,
-        pendingRiders,
-        platformCommission,
-        sellerPayable,
-        riderPayable,
-        totalRefunds,
+        activeSellers,
+        totalFranchises,
+        totalDeliveryBoys,
+        activeDeliveryBoys,
+        pendingDeliveryRequests,
+        totalCommission,
+        pendingPayouts,
+        refundRequests: refundRequestsCount,
       },
       analytics: {
         salesChart,
+        customerGrowth: customerGrowthAgg.map((c) => ({ date: c._id, count: c.newCustomers })),
         bestSellers: bestSellersAgg,
+        topSellers: topSellersAgg,
+        topRiders,
         orderStatusDistribution: [
-          { name: 'Pending', value: pendingOrders, color: '#f59e0b' },
-          { name: 'Processing', value: processingOrders, color: '#3b82f6' },
-          { name: 'Shipped', value: shippedOrders, color: '#8b5cf6' },
-          { name: 'Delivered', value: deliveredOrders, color: '#10b981' },
-          { name: 'Cancelled', value: cancelledOrders, color: '#ef4444' },
+          { name: 'Completed', value: completedOrders, color: '#10B981' },
+          { name: 'Active', value: activeOrders, color: '#6366F1' },
+          { name: 'Pending', value: pendingOrders, color: '#F59E0B' },
+          { name: 'Cancelled', value: cancelledOrders, color: '#EF4444' },
         ],
       },
-      recentOrders,
-      recentCustomers,
+      recentOrders: recentOrders.map((o) => ({
+        ...o,
+        orderId: o.orderId || o.orderNumber,
+        customerName: o.deliveryAddress?.fullName || o.shippingAddress?.fullName || 'Customer',
+        amount: o.totalAmount || o.pricing?.grandTotal || 0,
+      })),
+      recentCustomers: recentRegistrations || [],
       recentTransactions,
-      lowStockList,
+      liveActiveDeliveries: liveActiveDeliveries.map((d) => ({
+        _id: d._id,
+        orderNumber: d.order?.orderId || d.orderNumber || d.order?.orderNumber,
+        partnerName: d.deliveryPartner?.name || 'Rider',
+        partnerPhone: d.deliveryPartner?.phone || '',
+        vehicle: `${d.deliveryPartner?.vehicleType || 'Bike'} (${d.deliveryPartner?.vehicleNumber || ''})`,
+        status: d.status,
+        latitude: d.currentLocation?.latitude || d.deliveryPartner?.currentLocation?.latitude,
+        longitude: d.currentLocation?.longitude || d.deliveryPartner?.currentLocation?.longitude,
+        updatedAt: d.currentLocation?.updatedAt || d.updatedAt,
+      })),
     },
-    'Admin dashboard metrics retrieved successfully'
+    'Super Admin dashboard metrics retrieved successfully'
   );
 });
 
 module.exports = {
   getDashboardMetrics,
 };
-

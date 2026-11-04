@@ -60,7 +60,58 @@ const calculateOrderAmounts = ({ items, coupon = null, isExpress = false, pincod
   };
 };
 
+const calculateServerOrderTotals = (itemsOrObj, couponDoc, pinCode) => {
+  let items = [];
+  let coupon = null;
+  let isExpress = false;
+  let pincodeInfo = null;
+
+  if (Array.isArray(itemsOrObj)) {
+    items = itemsOrObj;
+    coupon = couponDoc;
+  } else if (itemsOrObj && typeof itemsOrObj === 'object') {
+    items = itemsOrObj.items || [];
+    coupon = itemsOrObj.coupon || null;
+    isExpress = itemsOrObj.isExpress || false;
+    pincodeInfo = itemsOrObj.pincodeInfo || null;
+  }
+
+  const result = calculateOrderAmounts({ items, coupon, isExpress, pincodeInfo });
+  return {
+    ...result,
+    grandTotal: result.totalAmount,
+    couponDiscount: result.discount,
+    deliveryFee: result.deliveryCharges,
+  };
+};
+
+const calculateCartTotals = (items = [], coupon = null) => {
+  const normalizedItems = (items || []).map((it) => {
+    const p = it.product || it;
+    const price = it.price ?? p.discountPrice ?? p.price ?? 0;
+    const quantity = it.quantity ?? 1;
+    return { price, quantity };
+  });
+
+  const amounts = calculateOrderAmounts({ items: normalizedItems, coupon });
+  return {
+    subtotal: amounts.subtotal,
+    discount: amounts.discount,
+    couponDiscount: amounts.discount,
+    deliveryCharges: amounts.deliveryCharges,
+    shippingFee: amounts.deliveryCharges,
+    tax: amounts.tax,
+    total: amounts.totalAmount,
+    totalAmount: amounts.totalAmount,
+    grandTotal: amounts.totalAmount,
+    freeDeliveryUnlocked: amounts.freeDeliveryUnlocked,
+    itemCount: normalizedItems.reduce((acc, x) => acc + x.quantity, 0),
+  };
+};
+
 module.exports = {
   calculateOrderAmounts,
+  calculateServerOrderTotals,
+  calculateCartTotals,
 };
 

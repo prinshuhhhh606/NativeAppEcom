@@ -103,7 +103,7 @@ export const Payouts = () => {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
             title={
               !isApproved
-                ? 'KYC verification required'
+                ? 'Admin approval required'
                 : availableBal < 500
                 ? 'Minimum withdrawal is ₹500'
                 : ''

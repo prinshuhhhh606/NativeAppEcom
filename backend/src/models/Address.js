@@ -66,8 +66,9 @@ const addressSchema = new mongoose.Schema(
     },
     addressType: {
       type: String,
-      enum: ['Home', 'Work', 'Other'],
+      enum: ['Home', 'Work', 'Other', 'home', 'work', 'other'],
       default: 'Home',
+      set: (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1).toLowerCase() : 'Home'),
     },
     isDefault: {
       type: Boolean,
@@ -76,8 +77,26 @@ const addressSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+addressSchema.virtual('id').get(function () {
+  return this._id.toHexString();
+});
+
+addressSchema.virtual('phone').get(function () {
+  return this.mobileNumber;
+});
+
+addressSchema.virtual('streetAddress').get(function () {
+  return this.addressLine1;
+});
+
+addressSchema.virtual('pincode').get(function () {
+  return this.pinCode;
+});
 
 module.exports = mongoose.model('Address', addressSchema);
 

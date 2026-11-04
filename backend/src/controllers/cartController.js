@@ -314,6 +314,119 @@ const removeCoupon = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * Merge guest cart items into authenticated user's cart
+ * POST /api/cart/merge
+ */
+const mergeCart = asyncHandler(async (req, res) => {
+  const { items = [] } = req.body;
+  if (!Array.isArray(items)) {
+    return errorResponse(res, 'Items must be an array', 400);
+  }
+
+  let cart = await Cart.findOne({ user: req.user._id });
+  if (!cart) {
+    cart = new Cart({ user: req.user._id, items: [] });
+  }
+
+  if (!cart.items) {
+    cart.items = [];
+  }
+
+  const productIds = items
+    .map((item) => item.productId || item.product?._id || item.product || item.id || item._id)
+    .filter(Boolean);
+
+  const existingProducts = await Product.find({
+    _id: { $in: productIds },
+    isActive: true,
+  });
+  const productMap = new Map(existingProducts.map((p) => [p._id.toString(), p]));
+
+  const notifications = [];
+
+  for (const guestItem of items) {
+    const rawId = (guestItem.productId || guestItem.product?._id || guestItem.product || guestItem.id || guestItem._id)?.toString();
+    const product = productMap.get(rawId);
+    const itemName = guestItem.name || guestItem.productName || 'Product';
+
+    if (!product) {
+      notifications.push(`"${itemName}" is no longer available and was removed.`);
+      continue;
+    }
+
+    if (product.stock <= 0) {
+      notifications.push(`"${product.name || itemName}" is currently out of stock and was omitted.`);
+      continue;
+    }
+
+    const guestQty = Math.max(1, parseInt(guestItem.quantity, 10) || 1);
+    const variant = guestItem.selectedVariant || guestItem.variant || {};
+    const size = (variant.size || '').toString();
+    const color = (variant.color || '').toString();
+
+    const effectivePrice = product.discountPrice && product.discountPrice > 0 ? product.discountPrice : product.price;
+    const guestPrice = Number(guestItem.price) || 0;
+    if (guestPrice > 0 && Math.abs(guestPrice - effectivePrice) > 0.01) {
+      notifications.push(`Price for "${product.name || itemName}" updated to ₹${effectivePrice}.`);
+    }
+
+    const existingIndex = cart.items.findIndex((item) => {
+      const sameProd = (item.product?._id || item.product)?.toString() === rawId;
+      const itemVar = item.selectedVariant || item.variant || {};
+      const sameSize = (itemVar.size || '').toString() === size;
+      const sameColor = (itemVar.color || '').toString() === color;
+      return sameProd && sameSize && sameColor;
+    });
+
+    if (existingIndex > -1) {
+      const requestedTotalQty = cart.items[existingIndex].quantity + guestQty;
+      const newTotalQty = Math.min(product.stock, requestedTotalQty);
+      if (newTotalQty < requestedTotalQty) {
+        notifications.push(`Only ${product.stock} units of "${product.name || itemName}" available in stock.`);
+      }
+      cart.items[existingIndex].quantity = newTotalQty;
+      cart.items[existingIndex].price = effectivePrice;
+      cart.items[existingIndex].priceAtAddition = effectivePrice;
+    } else {
+      const addedQty = Math.min(product.stock, guestQty);
+      if (addedQty < guestQty) {
+        notifications.push(`Only ${product.stock} units of "${product.name || itemName}" available in stock.`);
+      }
+      if (addedQty > 0) {
+        cart.items.push({
+          product: product._id,
+          quantity: addedQty,
+          price: effectivePrice,
+          priceAtAddition: effectivePrice,
+          variant: { size, color },
+          selectedVariant: { size, color },
+        });
+      }
+    }
+  }
+
+  cart.products = cart.items;
+  await cart.save();
+  await cart.populate({
+    path: 'items.product',
+    select: 'name productName price discountPrice images stock isActive',
+  });
+
+  const cartSummary = calculateCartTotals(cart.items, cart.appliedCoupon);
+
+  return successResponse(
+    res,
+    {
+      items: cart.items,
+      appliedCoupon: cart.appliedCoupon,
+      summary: cartSummary,
+      notifications,
+    },
+    'Cart items merged successfully'
+  );
+});
+
 module.exports = {
   getCart,
   addToCart,
@@ -322,5 +435,6 @@ module.exports = {
   clearCart,
   applyCoupon,
   removeCoupon,
+  mergeCart,
 };
 

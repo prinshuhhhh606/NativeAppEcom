@@ -36,14 +36,14 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   limits: {
-    fileSize: env.MAX_FILE_SIZE || 5 * 1024 * 1024, // 5MB
+    fileSize: env.MAX_FILE_SIZE || 10 * 1024 * 1024, // 10MB per image
   },
   fileFilter,
 });
 
 module.exports = {
   uploadSingle: (fieldName = 'image') => upload.single(fieldName),
-  uploadMultiple: (fieldName = 'images', maxCount = 5) => upload.array(fieldName, maxCount),
+  uploadMultiple: (fieldName = 'images', maxCount = 10) => upload.array(fieldName, maxCount),
   uploadFields: (fields = []) => upload.fields(fields),
   upload,
 };

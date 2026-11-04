@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Boxes, Search, AlertTriangle, ArrowUpDown, Plus, Minus, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Boxes, Search, AlertTriangle, ArrowUpDown, Plus, Minus, RefreshCw, CheckCircle2, Barcode } from 'lucide-react';
 import sellerService from '../../services/sellerService';
 import Modal from '../../components/common/Modal';
+import BarcodeScannerModal from '../../components/common/BarcodeScannerModal';
 import toast from 'react-hot-toast';
 
 export const Inventory = () => {
@@ -9,6 +10,7 @@ export const Inventory = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // 'all' | 'low' | 'out'
   const [search, setSearch] = useState('');
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   // Stock Adjustment Modal State
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -98,12 +100,22 @@ export const Inventory = () => {
           </p>
         </div>
 
-        <button
-          onClick={fetchInventory}
-          className="p-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setShowBarcodeScanner(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 font-bold text-xs shadow-md shadow-slate-900/10 transition-all"
+          >
+            <Barcode className="w-4 h-4" />
+            <span>Scan Barcode / QR</span>
+          </button>
+          <button
+            onClick={fetchInventory}
+            className="p-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+            title="Refresh Inventory"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -341,6 +353,13 @@ export const Inventory = () => {
           </form>
         </Modal>
       )}
+
+      {/* Barcode & QR Stock Adjustment Modal */}
+      <BarcodeScannerModal
+        isOpen={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onStockUpdated={fetchInventory}
+      />
     </div>
   );
 };

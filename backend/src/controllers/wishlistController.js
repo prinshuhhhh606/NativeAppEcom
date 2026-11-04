@@ -1,8 +1,11 @@
+const mongoose = require('mongoose');
 const Wishlist = require('../models/Wishlist');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+
+const POPULATE_FIELDS = 'productName name price originalPrice discountPrice discountPercent images ratings numReviews numOfReviews stock inStock brand slug';
 
 /**
  * Get user's wishlist
@@ -11,14 +14,15 @@ const { successResponse, errorResponse } = require('../utils/apiResponse');
 const getWishlist = asyncHandler(async (req, res) => {
   let wishlist = await Wishlist.findOne({ user: req.user._id }).populate({
     path: 'products',
-    select: 'name price discountPrice discountPercent images ratings numOfReviews stock inStock brand',
+    select: POPULATE_FIELDS,
   });
 
   if (!wishlist) {
     wishlist = await Wishlist.create({ user: req.user._id, products: [] });
   }
 
-  return successResponse(res, wishlist.products, 'Wishlist fetched successfully');
+  const cleanedProducts = (wishlist.products || []).filter((p) => p !== null);
+  return successResponse(res, cleanedProducts, 'Wishlist fetched successfully');
 });
 
 /**
@@ -28,9 +32,13 @@ const getWishlist = asyncHandler(async (req, res) => {
 const addToWishlist = asyncHandler(async (req, res) => {
   const { productId } = req.body;
 
+  if (!productId || !mongoose.Types.ObjectId.isValid(productId.toString())) {
+    return errorResponse(res, 'Valid product ID is required', 400);
+  }
+
   const product = await Product.findById(productId);
   if (!product || !product.isActive) {
-    return errorResponse(res, 'Product not found', 404);
+    return errorResponse(res, 'Product not found or inactive', 404);
   }
 
   let wishlist = await Wishlist.findOne({ user: req.user._id });
@@ -38,17 +46,19 @@ const addToWishlist = asyncHandler(async (req, res) => {
     wishlist = new Wishlist({ user: req.user._id, products: [] });
   }
 
-  if (!wishlist.products.includes(productId)) {
+  const strId = productId.toString();
+  if (!wishlist.products.some((id) => id.toString() === strId)) {
     wishlist.products.push(productId);
     await wishlist.save();
   }
 
   await wishlist.populate({
     path: 'products',
-    select: 'name price discountPrice discountPercent images ratings stock brand',
+    select: POPULATE_FIELDS,
   });
 
-  return successResponse(res, wishlist.products, 'Product added to wishlist');
+  const cleanedProducts = (wishlist.products || []).filter((p) => p !== null);
+  return successResponse(res, cleanedProducts, 'Product added to wishlist');
 });
 
 /**
@@ -60,15 +70,17 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
 
   let wishlist = await Wishlist.findOne({ user: req.user._id });
   if (wishlist) {
-    wishlist.products = wishlist.products.filter((id) => id.toString() !== productId);
+    const strId = (productId || '').toString();
+    wishlist.products = wishlist.products.filter((id) => id.toString() !== strId);
     await wishlist.save();
     await wishlist.populate({
       path: 'products',
-      select: 'name price discountPrice discountPercent images ratings stock brand',
+      select: POPULATE_FIELDS,
     });
   }
 
-  return successResponse(res, wishlist?.products || [], 'Product removed from wishlist');
+  const cleanedProducts = (wishlist?.products || []).filter((p) => p !== null);
+  return successResponse(res, cleanedProducts, 'Product removed from wishlist');
 });
 
 /**
@@ -77,8 +89,8 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
  */
 const toggleWishlist = asyncHandler(async (req, res) => {
   const { productId } = req.body;
-  if (!productId) {
-    return errorResponse(res, 'Product ID is required', 400);
+  if (!productId || !mongoose.Types.ObjectId.isValid(productId.toString())) {
+    return errorResponse(res, 'Valid product ID is required', 400);
   }
 
   let wishlist = await Wishlist.findOne({ user: req.user._id });
@@ -86,7 +98,8 @@ const toggleWishlist = asyncHandler(async (req, res) => {
     wishlist = new Wishlist({ user: req.user._id, products: [] });
   }
 
-  const existsIndex = wishlist.products.findIndex((p) => p.toString() === productId);
+  const strId = productId.toString();
+  const existsIndex = wishlist.products.findIndex((p) => p.toString() === strId);
   let action = 'added';
 
   if (existsIndex > -1) {
@@ -100,14 +113,15 @@ const toggleWishlist = asyncHandler(async (req, res) => {
   await wishlist.save();
   await wishlist.populate({
     path: 'products',
-    select: 'name price discountPrice discountPercent images ratings stock brand',
+    select: POPULATE_FIELDS,
   });
 
+  const cleanedProducts = (wishlist.products || []).filter((p) => p !== null);
   return successResponse(
     res,
     {
       action,
-      products: wishlist.products,
+      products: cleanedProducts,
       isWishlisted: action === 'added',
     },
     `Product ${action} from wishlist`
@@ -165,27 +179,34 @@ const syncWishlist = asyncHandler(async (req, res) => {
     wishlist = new Wishlist({ user: req.user._id, products: [] });
   }
 
-  // Find valid active products
-  const validProducts = await Product.find({
-    _id: { $in: productIds },
-    isActive: true,
-  }).select('_id');
+  // Filter only valid MongoDB ObjectIds to prevent CastErrors
+  const validObjectIds = productIds.filter(
+    (id) => id && mongoose.Types.ObjectId.isValid(id.toString())
+  );
 
-  const validIds = validProducts.map((p) => p._id.toString());
-  const existingSet = new Set(wishlist.products.map((p) => p.toString()));
+  if (validObjectIds.length > 0) {
+    const validProducts = await Product.find({
+      _id: { $in: validObjectIds },
+      isActive: true,
+    }).select('_id');
 
-  validIds.forEach((id) => {
-    if (!existingSet.has(id)) {
-      wishlist.products.push(id);
-      existingSet.add(id);
-    }
-  });
+    const validIds = validProducts.map((p) => p._id.toString());
+    const existingSet = new Set(wishlist.products.map((p) => p.toString()));
 
-  await wishlist.save();
+    validIds.forEach((id) => {
+      if (!existingSet.has(id)) {
+        wishlist.products.push(id);
+        existingSet.add(id);
+      }
+    });
+
+    await wishlist.save();
+  }
+
   await wishlist.populate({
     path: 'products',
     match: { isActive: true },
-    select: 'productName name price originalPrice discountPrice discountPercent images ratings stock brand',
+    select: POPULATE_FIELDS,
   });
 
   const cleanedProducts = (wishlist.products || []).filter((p) => p !== null);

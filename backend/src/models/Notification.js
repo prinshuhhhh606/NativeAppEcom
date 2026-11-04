@@ -8,7 +8,17 @@ const notificationSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
+      index: true,
+    },
+    recipientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      index: true,
+    },
+    recipientType: {
+      type: String,
+      enum: ['user', 'seller', 'delivery', 'admin'],
+      default: 'user',
       index: true,
     },
     title: {
@@ -19,6 +29,10 @@ const notificationSchema = new mongoose.Schema(
     body: {
       type: String,
       required: true,
+      trim: true,
+    },
+    message: {
+      type: String,
       trim: true,
     },
     icon: {

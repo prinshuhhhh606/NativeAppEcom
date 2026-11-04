@@ -4,6 +4,7 @@
  */
 const mongoose = require('mongoose');
 const env = require('../src/config/env');
+const { connectDB } = require('../src/config/db');
 const DeliveryPartner = require('../src/models/DeliveryPartner');
 const DeliveryAssignment = require('../src/models/DeliveryAssignment');
 const Delivery = require('../src/models/Delivery');
@@ -15,7 +16,7 @@ const Order = require('../src/models/Order');
 const seedCompleteDelivery = async () => {
   try {
     console.log('Connecting to MongoDB at:', env.MONGODB_URI);
-    await mongoose.connect(env.MONGODB_URI);
+    await connectDB();
 
     // 1. Find or create an approved Seller
     let seller = await Seller.findOne({ email: 'seller@appecom.in' });

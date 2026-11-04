@@ -37,12 +37,13 @@ const deliveryAssignmentSchema = new mongoose.Schema(
     deliveryPartner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'DeliveryPartner',
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
     deliveryPartnerName: {
       type: String,
-      required: true,
+      default: '',
     },
 
     // Status Lifecycle

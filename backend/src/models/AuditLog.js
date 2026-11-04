@@ -35,6 +35,13 @@ const auditLogSchema = new mongoose.Schema(
         'returns',
         'settings',
         'auth',
+        'sellers',
+        'delivery',
+        'franchises',
+        'support',
+        'notifications',
+        'commissions',
+        'payouts',
       ],
     },
     targetId: {

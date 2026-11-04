@@ -4,11 +4,11 @@
 
 @layer base {
   body {
-    @apply antialiased transition-colors duration-200;
+    @apply antialiased bg-[#F8FAFC] dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-200 font-sans;
   }
 }
 
-/* Custom scrollbars */
+/* Custom modern scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -17,17 +17,30 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.4);
+  background: rgba(148, 163, 184, 0.4);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.7);
+  background: rgba(100, 116, 139, 0.7);
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.5);
+  background: rgba(71, 85, 105, 0.5);
 }
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(75, 85, 99, 0.8);
+  background: rgba(100, 116, 139, 0.8);
 }
 
+/* Modern Gradient Text Helpers */
+.text-gradient-primary {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600;
+}
+.text-gradient-secondary {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600;
+}
+.text-gradient-accent {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500;
+}
+.text-gradient-success {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500;
+}

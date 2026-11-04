@@ -14,6 +14,7 @@ const variantSchema = new mongoose.Schema(
 const variantItemSchema = new mongoose.Schema(
   {
     sku: { type: String, trim: true, uppercase: true },
+    barcode: { type: String, trim: true, uppercase: true },
     attributes: {
       size: { type: String, trim: true },
       color: { type: String, trim: true },
@@ -91,12 +92,46 @@ const productSchema = new mongoose.Schema(
       min: [0, 'Stock cannot be negative'],
       default: 10,
     },
+    lowStockAlert: {
+      type: Number,
+      default: 5,
+    },
+    subCategory: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    costPrice: {
+      type: Number,
+      min: [0, 'Cost price cannot be negative'],
+    },
+    dimensions: {
+      length: { type: Number, default: 0 },
+      width: { type: Number, default: 0 },
+      height: { type: Number, default: 0 },
+    },
+    shippingInfo: {
+      transitDays: { type: Number, default: 3 },
+      shippingCharge: { type: Number, default: 0 },
+      freeShipping: { type: Boolean, default: true },
+    },
+    returnPolicy: {
+      returnable: { type: Boolean, default: true },
+      returnPeriodDays: { type: Number, default: 7 },
+    },
     sku: {
       type: String,
       unique: true,
       sparse: true,
       uppercase: true,
       trim: true,
+    },
+    barcode: {
+      type: String,
+      sparse: true,
+      uppercase: true,
+      trim: true,
+      index: true,
     },
     variants: {
       type: variantSchema,
@@ -145,9 +180,17 @@ const productSchema = new mongoose.Schema(
     },
     approvalStatus: {
       type: String,
-      enum: ['draft', 'pending_approval', 'approved', 'rejected', 'suspended'],
+      enum: ['draft', 'pending', 'pending_approval', 'approved', 'rejected', 'suspended'],
       default: 'approved',
       index: true,
+    },
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+    publishedAt: {
+      type: Date,
+      default: null,
     },
     rejectionReason: {
       type: String,

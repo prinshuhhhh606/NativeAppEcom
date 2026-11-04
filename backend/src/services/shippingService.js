@@ -243,53 +243,98 @@ const checkPinCodeServiceability = (pinCode, orderAmount = 0) => {
  * Generate simulated tracking updates for active orders.
  */
 const getSimulatedTracking = (order) => {
-  const status = order.orderStatus;
+  const statusNorm = (order.orderStatus || order.status || 'placed').toLowerCase();
   const now = new Date();
+
+  const STATUS_RANKS = {
+    placed: 1,
+    pending: 1,
+    new: 1,
+    confirmed: 2,
+    accepted: 2,
+    preparing: 3,
+    processing: 3,
+    packing: 3,
+    packed: 3,
+    ready_for_pickup: 4,
+    ready_to_ship: 4,
+    pickup_scheduled: 4,
+    picked_up: 5,
+    shipped: 6,
+    in_transit: 6,
+    out_for_delivery: 7,
+    delivered: 8,
+  };
+
+  const currentRank = STATUS_RANKS[statusNorm] || 1;
 
   const timeline = [
     {
-      status: 'Placed',
-      title: 'Order Placed',
+      status: 'Order Placed',
+      title: 'ORDER PLACED',
       description: 'Your order has been placed successfully.',
       date: order.createdAt || now,
-      completed: true,
+      completed: currentRank >= 1,
     },
     {
-      status: 'Confirmed',
-      title: 'Order Confirmed',
+      status: 'Order Confirmed',
+      title: 'ORDER CONFIRMED',
       description: 'Seller has confirmed your order.',
-      date: order.createdAt || now,
-      completed: ['Confirmed', 'Processing', 'Packed', 'Shipped', 'OutForDelivery', 'Delivered'].includes(status),
+      date: order.acceptedAt || order.createdAt || now,
+      completed: currentRank >= 2,
     },
     {
-      status: 'Shipped',
-      title: 'Shipped with Courier',
-      description: `Dispatched via ${order.shippingDetails?.courierName || 'Delhivery'}. AWB: ${
-        order.shippingDetails?.trackingNumber || 'IND-' + Date.now().toString().slice(-8)
+      status: 'Preparing Your Order',
+      title: 'PREPARING YOUR ORDER',
+      description: 'Package is being carefully prepared and packaged.',
+      date: order.preparingAt || now,
+      completed: currentRank >= 3,
+    },
+    {
+      status: 'Ready for Pickup',
+      title: 'READY FOR PICKUP',
+      description: 'Order packaging completed. Ready at merchant hub.',
+      date: order.readyForPickupAt || now,
+      completed: currentRank >= 4,
+    },
+    {
+      status: 'Picked Up',
+      title: 'PICKED UP',
+      description: order.deliveryPartnerName
+        ? `Picked up by ${order.deliveryPartnerName}.`
+        : 'Picked up by delivery partner.',
+      date: order.pickedUpAt || now,
+      completed: currentRank >= 5,
+    },
+    {
+      status: 'Shipped / In Transit',
+      title: 'SHIPPED / IN TRANSIT',
+      description: `Dispatched via ${order.courierPartner || order.shippingDetails?.courierName || 'Delhivery'}. AWB: ${
+        order.trackingNumber || order.shippingDetails?.trackingNumber || 'IND-' + Date.now().toString().slice(-8)
       }`,
-      date: order.updatedAt || now,
-      completed: ['Shipped', 'OutForDelivery', 'Delivered'].includes(status),
+      date: order.shippedAt || order.updatedAt || now,
+      completed: currentRank >= 6,
     },
     {
-      status: 'OutForDelivery',
-      title: 'Out for Delivery',
+      status: 'Out for Delivery',
+      title: 'OUT FOR DELIVERY',
       description: `Delivery executive is on the way to ${order.shippingAddress?.city || 'your address'}.`,
-      date: order.updatedAt || now,
-      completed: ['OutForDelivery', 'Delivered'].includes(status),
+      date: order.outForDeliveryAt || order.updatedAt || now,
+      completed: currentRank >= 7,
     },
     {
       status: 'Delivered',
-      title: 'Delivered',
-      description: `Delivered to recipient at ${order.shippingAddress?.pinCode}.`,
+      title: 'DELIVERED',
+      description: `Delivered securely to recipient at ${order.shippingAddress?.pinCode || 'your address'}.`,
       date: order.deliveredAt || now,
-      completed: status === 'Delivered',
+      completed: currentRank >= 8,
     },
   ];
 
   return {
-    trackingNumber: order.shippingDetails?.trackingNumber || `AWB${Date.now().toString().slice(-9)}`,
-    courierName: order.shippingDetails?.courierName || 'Delhivery Pan-India Express',
-    currentStatus: status,
+    trackingNumber: order.trackingNumber || order.shippingDetails?.trackingNumber || `AWB${Date.now().toString().slice(-9)}`,
+    courierName: order.courierPartner || order.shippingDetails?.courierName || 'Delhivery Pan-India Express',
+    currentStatus: statusNorm,
     estimatedDelivery: order.shippingDetails?.estimatedDeliveryDate,
     timeline,
   };

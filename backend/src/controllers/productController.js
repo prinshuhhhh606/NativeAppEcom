@@ -35,7 +35,10 @@ const getAllProducts = asyncHandler(async (req, res) => {
     sortBy,
   } = req.query;
 
-  const filter = { isActive: true };
+  const filter = {
+    isActive: true,
+    approvalStatus: { $nin: ['draft', 'pending', 'pending_approval', 'rejected', 'suspended'] },
+  };
 
   // Category filter by ID or slug
   if (category) {
@@ -146,7 +149,11 @@ const getAllProducts = asyncHandler(async (req, res) => {
 const getProductById = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id).populate('category', 'name slug');
 
-  if (!product || !product.isActive) {
+  if (
+    !product ||
+    !product.isActive ||
+    ['draft', 'pending', 'pending_approval', 'rejected', 'suspended'].includes(product.approvalStatus)
+  ) {
     return errorResponse(res, 'Product not found or currently unavailable', 404);
   }
 
@@ -414,7 +421,10 @@ const getRecommendations = asyncHandler(async (req, res) => {
     }
   }
 
-  const filter = { isActive: true };
+  const filter = {
+    isActive: true,
+    approvalStatus: { $nin: ['draft', 'pending', 'pending_approval', 'rejected', 'suspended'] },
+  };
   if (categoryIds.length > 0) {
     filter.category = { $in: categoryIds };
   } else {

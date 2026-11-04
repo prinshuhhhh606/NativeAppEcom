@@ -1,8 +1,18 @@
 /**
  * MongoDB Mongoose Connection Manager
  */
+const dns = require('dns');
 const mongoose = require('mongoose');
 const env = require('./env');
+
+// Ensure SRV DNS resolution works smoothly on Windows with MongoDB Atlas (+srv://)
+if (env.MONGODB_URI && env.MONGODB_URI.startsWith('mongodb+srv://')) {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  } catch (e) {
+    // Ignore if not supported in custom environment
+  }
+}
 
 const connectDB = async () => {
   try {

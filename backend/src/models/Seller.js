@@ -43,7 +43,7 @@ const sellerSchema = new mongoose.Schema(
     // 2. Business Profile
     businessName: {
       type: String,
-      required: [true, 'Business/Company name is required'],
+      default: '',
       trim: true,
       index: true,
     },
@@ -124,9 +124,17 @@ const sellerSchema = new mongoose.Schema(
     // 6. Account Status & Admin Controls
     status: {
       type: String,
-      enum: ['pending_verification', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'],
-      default: 'pending_verification',
+      enum: ['pending', 'pending_verification', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'],
+      default: 'pending',
       index: true,
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    approvedAt: {
+      type: Date,
+      default: null,
     },
     rejectionReason: {
       type: String,
@@ -138,6 +146,12 @@ const sellerSchema = new mongoose.Schema(
       min: [0, 'Commission cannot be negative'],
       max: [50, 'Commission cannot exceed 50%'],
     },
+    franchise: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Franchise',
+      default: null,
+      index: true,
+    },
 
     // 7. Financial Balance Overview
     balance: {
@@ -147,11 +161,74 @@ const sellerSchema = new mongoose.Schema(
       totalWithdrawn: { type: Number, default: 0 },
     },
 
-    // 8. Security & Auth Tokens
+    // 8. Store Automation & Availability
+    storeAutomation: {
+      vacationMode: {
+        enabled: { type: Boolean, default: false },
+        message: { type: String, default: 'Our store is temporarily away on vacation. Orders placed will be processed upon our return.' },
+        startDate: { type: Date },
+        endDate: { type: Date },
+      },
+      operatingHours: {
+        openTime: { type: String, default: '09:00' },
+        closeTime: { type: String, default: '21:00' },
+        closedDays: [{ type: String }],
+      },
+      holidays: [
+        {
+          date: { type: Date },
+          title: { type: String },
+        },
+      ],
+      autoAcceptOrders: {
+        enabled: { type: Boolean, default: false },
+        maxOrderValue: { type: Number, default: 10000 },
+      },
+      orderPrepTimeMinutes: { type: Number, default: 30 },
+      cutoffTime: { type: String, default: '18:00' },
+      isStoreOpen: { type: Boolean, default: true },
+    },
+
+    // 9. Delivery Zones & Logistics Settings
+    deliverySettings: {
+      zones: [
+        {
+          radiusKm: { type: Number, default: 5 },
+          fee: { type: Number, default: 40 },
+          freeAbove: { type: Number, default: 499 },
+          enabled: { type: Boolean, default: true },
+        },
+      ],
+      sameDayDelivery: { type: Boolean, default: true },
+      expressDelivery: { type: Boolean, default: false },
+      scheduledSlots: [
+        { slot: { type: String }, enabled: { type: Boolean, default: true } },
+      ],
+      partnerPreferences: {
+        autoAssign: { type: Boolean, default: true },
+        autoAssignTimeoutSeconds: { type: Number, default: 120 },
+        maxBatchOrders: { type: Number, default: 3 },
+        useOwnStaff: { type: Boolean, default: false },
+      },
+    },
+
+    // 10. Accounting & Invoicing Preferences
+    accountingSettings: {
+      invoicePrefix: { type: String, default: 'INV-BB' },
+      gstRegistered: { type: Boolean, default: true },
+      legalBusinessName: { type: String, default: '' },
+    },
+
+    // 11. Security & Auth Tokens
     refreshToken: {
       type: String,
       select: false,
     },
+    previousRefreshToken: {
+      type: String,
+      select: false,
+    },
+    previousRefreshTokenExpires: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
     lastLogin: Date,

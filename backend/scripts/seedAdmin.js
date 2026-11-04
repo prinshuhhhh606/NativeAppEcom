@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const env = require('../src/config/env');
+const { connectDB } = require('../src/config/db');
 const Admin = require('../src/models/Admin');
 const Role = require('../src/models/Role');
 const Permission = require('../src/models/Permission');
@@ -10,7 +11,7 @@ const Inventory = require('../src/models/Inventory');
 const seedAdminData = async () => {
   try {
     console.log('Connecting to MongoDB for Admin Seeding...');
-    await mongoose.connect(env.MONGODB_URI);
+    await connectDB();
     console.log('Connected to DB.');
 
     // 1. Seed System Roles

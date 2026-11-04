@@ -95,24 +95,28 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Mount Customer API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/wishlist', wishlistRoutes);
-app.use('/api/addresses', addressRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/coupons', couponRoutes);
-app.use('/api/reviews', reviewRoutes);
-app.use('/api/questions', questionRoutes);
-app.use('/api/flash-sales', flashSaleRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/delivery', deliveryRoutes);
-app.use('/api/v1/delivery', deliveryRoutes);
-app.use('/api/returns', returnRoutes);
+// Mount Customer API routes across both /api and /api/v1 prefixes
+const mountCustomerRoutes = (prefix) => {
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/users`, userRoutes);
+  app.use(`${prefix}/products`, productRoutes);
+  app.use(`${prefix}/categories`, categoryRoutes);
+  app.use(`${prefix}/cart`, cartRoutes);
+  app.use(`${prefix}/wishlist`, wishlistRoutes);
+  app.use(`${prefix}/addresses`, addressRoutes);
+  app.use(`${prefix}/orders`, orderRoutes);
+  app.use(`${prefix}/payments`, paymentRoutes);
+  app.use(`${prefix}/coupons`, couponRoutes);
+  app.use(`${prefix}/reviews`, reviewRoutes);
+  app.use(`${prefix}/questions`, questionRoutes);
+  app.use(`${prefix}/flash-sales`, flashSaleRoutes);
+  app.use(`${prefix}/notifications`, notificationRoutes);
+  app.use(`${prefix}/delivery`, deliveryRoutes);
+  app.use(`${prefix}/returns`, returnRoutes);
+};
+
+mountCustomerRoutes('/api');
+mountCustomerRoutes('/api/v1');
 
 // Mount Admin Panel API routes (supports both /api/v1/admin and /api/admin)
 app.use('/api/v1/admin', adminRoutes);
@@ -134,7 +138,7 @@ const PORT = env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
-    httpServer.listen(PORT, () => {
+    httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);
       console.log(`🚀 Pan India E-Commerce API & Real-Time Socket Server`);
       console.log(`📡 URL: http://localhost:${PORT}`);

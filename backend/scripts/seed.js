@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const env = require('../src/config/env');
+const { connectDB } = require('../src/config/db');
 const User = require('../src/models/User');
 const Category = require('../src/models/Category');
 const Product = require('../src/models/Product');
@@ -11,7 +12,7 @@ const Wishlist = require('../src/models/Wishlist');
 const seedData = async () => {
   try {
     console.log('Connecting to MongoDB for seeding...');
-    await mongoose.connect(env.MONGODB_URI);
+    await connectDB();
     console.log('Connected.');
 
     // 1. Clear existing collections

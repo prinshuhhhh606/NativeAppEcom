@@ -4,6 +4,7 @@
  */
 const mongoose = require('mongoose');
 const env = require('../src/config/env');
+const { connectDB } = require('../src/config/db');
 const Seller = require('../src/models/Seller');
 const Product = require('../src/models/Product');
 const Category = require('../src/models/Category');
@@ -16,7 +17,7 @@ const Payout = require('../src/models/Payout');
 const seedSellerData = async () => {
   try {
     console.log('Connecting to MongoDB for Seller Seeding...');
-    await mongoose.connect(env.MONGODB_URI);
+    await connectDB();
     console.log('Connected to DB.');
 
     // 1. Seed or Update Approved Demo Seller

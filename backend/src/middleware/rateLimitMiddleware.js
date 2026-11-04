@@ -9,10 +9,11 @@ const handler = (message) => (req, res /*, next, options */) => {
 // General API rate limiter
 const generalLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
-  max: env.RATE_LIMIT_MAX || 200,
+  max: env.NODE_ENV === 'development' ? 5000 : (env.RATE_LIMIT_MAX || 1000),
   standardHeaders: true,
   legacyHeaders: false,
-  handler: handler('Too many requests from this IP, please try again later.'),
+  skip: (req) => req.method === 'OPTIONS' || req.path === '/health',
+  handler: handler('Too many requests from this IP. Please wait a moment before trying again.'),
 });
 
 // Strict rate limiter for authentication routes (login, register, OTP)
@@ -33,9 +34,24 @@ const paymentLimiter = rateLimit({
   handler: handler('Too many payment operations. Please try again shortly.'),
 });
 
+// Dedicated rate limiter for product submissions to prevent duplicate/spam reviews
+const productSubmissionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.NODE_ENV === 'development' ? 500 : 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    // Key by authenticated seller ID so other sellers/IPs on same network are not affected
+    return req.seller?._id ? `seller_${req.seller._id}` : req.ip;
+  },
+  handler: handler('Too many product submission attempts. Please wait a few minutes before trying again.'),
+});
+
 module.exports = {
   generalLimiter,
   authLimiter,
   paymentLimiter,
+  productSubmissionLimiter,
 };
 

@@ -10,6 +10,8 @@ const SellerLedger = require('../../models/SellerLedger');
 const asyncHandler = require('../../utils/asyncHandler');
 const { successResponse, errorResponse } = require('../../utils/apiResponse');
 const { emitToSeller, getIO } = require('../../sockets/socketManager');
+const { syncSellerToUser } = require('../../utils/dualAccountBridge');
+const notificationService = require('../../services/notificationService');
 
 /**
  * List All Sellers
@@ -20,7 +22,14 @@ const getSellers = asyncHandler(async (req, res) => {
   const query = {};
 
   if (status && status !== 'all') {
-    query.status = status;
+    const s = status.toLowerCase().trim();
+    if (s === 'pending' || s === 'pending_verification') {
+      query.status = { $in: ['pending', 'pending_verification', 'under_review'] };
+    } else if (s === 'suspended') {
+      query.status = { $in: ['suspended', 'blocked'] };
+    } else {
+      query.status = s;
+    }
   }
 
   if (search) {
@@ -68,7 +77,7 @@ const getSellerDetails = asyncHandler(async (req, res) => {
 const updateSellerStatus = asyncHandler(async (req, res) => {
   const { status, rejectionReason } = req.body || {};
 
-  const validStatuses = ['pending_verification', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'];
+  const validStatuses = ['pending', 'pending_verification', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'];
   if (!validStatuses.includes(status)) {
     return errorResponse(res, 'Invalid status provided', 400);
   }
@@ -79,15 +88,62 @@ const updateSellerStatus = asyncHandler(async (req, res) => {
   }
 
   seller.status = status;
-  if (rejectionReason) seller.rejectionReason = rejectionReason;
-  if (status === 'approved') seller.rejectionReason = '';
+  if (status === 'approved') {
+    seller.isVerified = true;
+    seller.approvedAt = new Date();
+    seller.rejectionReason = '';
+    seller.isActive = true;
+  } else if (status === 'rejected') {
+    seller.isVerified = false;
+    seller.rejectionReason = rejectionReason ? rejectionReason.trim() : 'Account details rejected by administrator.';
+  } else if (status === 'suspended' || status === 'blocked') {
+    seller.isActive = false;
+    if (rejectionReason) seller.rejectionReason = rejectionReason.trim();
+  } else {
+    seller.isVerified = false;
+  }
 
   await seller.save();
+
+  // Dual Access System: synchronize status with shadow User account
+  try {
+    await syncSellerToUser(seller);
+  } catch (syncErr) {
+    console.warn('Sync seller to user error on status update:', syncErr?.message);
+  }
+
+  // Persistent Notification to Seller
+  try {
+    let notifTitle = 'Seller Account Status Update';
+    let notifMsg = `Your seller account status has been updated to: ${status.toUpperCase()}`;
+
+    if (status === 'approved') {
+      notifTitle = 'Seller Registration Approved! 🎉';
+      notifMsg = 'Congratulations! Your seller registration has been approved by the Admin. You can now log in to your dashboard, list products, and manage orders.';
+    } else if (status === 'rejected') {
+      notifTitle = 'Seller Registration Rejected';
+      notifMsg = `Your seller registration was rejected by Admin. Reason: ${seller.rejectionReason || 'Details criteria not met.'}`;
+    } else if (status === 'suspended') {
+      notifTitle = 'Seller Account Suspended';
+      notifMsg = `Your seller account has been suspended by the administrator. Reason: ${seller.rejectionReason || 'Policy review.'}`;
+    }
+
+    await notificationService.createNotification(seller._id, {
+      title: notifTitle,
+      message: notifMsg,
+      type: 'order',
+      recipientType: 'seller',
+      data: { status, rejectionReason: seller.rejectionReason },
+    });
+  } catch (notifErr) {
+    console.warn('Seller notification error on status update:', notifErr?.message);
+  }
 
   // Notify Seller in real-time
   try {
     emitToSeller(seller._id, 'account_status_updated', {
       status,
+      isVerified: seller.isVerified,
       rejectionReason: seller.rejectionReason,
       updatedAt: new Date(),
     });
@@ -128,13 +184,13 @@ const getPendingProducts = asyncHandler(async (req, res) => {
   const skip = (Number(page) - 1) * Number(limit);
 
   const [products, totalCount] = await Promise.all([
-    Product.find({ approvalStatus: 'pending_approval' })
-      .populate('seller', 'name businessName storeName email phone')
-      .populate('category', 'name')
-      .sort({ createdAt: -1 })
+    Product.find({ approvalStatus: { $in: ['pending', 'pending_approval'] } })
+      .populate('seller', 'name businessName storeName email phone address')
+      .populate('category', 'name categoryName slug icon')
+      .sort({ submittedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(Number(limit)),
-    Product.countDocuments({ approvalStatus: 'pending_approval' }),
+    Product.countDocuments({ approvalStatus: { $in: ['pending', 'pending_approval'] } }),
   ]);
 
   return successResponse(res, products, 'Pending products fetched', 200, {
@@ -156,6 +212,10 @@ const handleProductApproval = asyncHandler(async (req, res) => {
     return errorResponse(res, "Decision must be 'approved' or 'rejected'", 400);
   }
 
+  if (decision === 'rejected' && (!rejectionReason || !rejectionReason.trim())) {
+    return errorResponse(res, 'A rejection reason is mandatory when rejecting a product', 400);
+  }
+
   const product = await Product.findById(req.params.id);
   if (!product) {
     return errorResponse(res, 'Product not found', 404);
@@ -163,8 +223,11 @@ const handleProductApproval = asyncHandler(async (req, res) => {
 
   product.approvalStatus = decision;
   product.isActive = decision === 'approved';
-  if (rejectionReason) product.rejectionReason = rejectionReason;
-  if (decision === 'approved') product.rejectionReason = '';
+  if (decision === 'approved') {
+    product.rejectionReason = '';
+  } else {
+    product.rejectionReason = rejectionReason.trim();
+  }
 
   await product.save();
 
@@ -191,7 +254,14 @@ const getAllPayouts = asyncHandler(async (req, res) => {
   const { page = 1, limit = 15, status } = req.query;
   const query = {};
   if (status && status !== 'all') {
-    query.status = status;
+    const s = status.toLowerCase().trim();
+    if (s === 'pending' || s === 'pending_verification') {
+      query.status = { $in: ['pending', 'pending_verification', 'under_review'] };
+    } else if (s === 'suspended') {
+      query.status = { $in: ['suspended', 'blocked'] };
+    } else {
+      query.status = s;
+    }
   }
 
   const skip = (Number(page) - 1) * Number(limit);

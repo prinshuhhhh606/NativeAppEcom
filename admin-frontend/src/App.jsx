@@ -23,6 +23,12 @@ import Returns from './pages/Returns';
 import Reviews from './pages/Reviews';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Franchises from './pages/Franchises';
+import LiveDeliveries from './pages/LiveDeliveries';
+import Commissions from './pages/Commissions';
+import Payouts from './pages/Payouts';
+import Support from './pages/Support';
+import Notifications from './pages/Notifications';
 
 export function App() {
   return (
@@ -56,7 +62,13 @@ export function App() {
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="sellers" element={<Sellers />} />
+                <Route path="franchises" element={<Franchises />} />
                 <Route path="delivery-partners" element={<DeliveryPartners />} />
+                <Route path="live-deliveries" element={<LiveDeliveries />} />
+                <Route path="commissions" element={<Commissions />} />
+                <Route path="payouts" element={<Payouts />} />
+                <Route path="support" element={<Support />} />
+                <Route path="notifications" element={<Notifications />} />
                 <Route path="coupons" element={<Coupons />} />
                 <Route path="payments" element={<Payments />} />
                 <Route path="shipping" element={<Shipping />} />

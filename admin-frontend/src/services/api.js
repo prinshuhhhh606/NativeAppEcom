@@ -11,8 +11,8 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('appecom_admin_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (token && token.trim()) {
+      config.headers.Authorization = `Bearer ${token.trim()}`;
     }
     return config;
   },
@@ -25,7 +25,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized (expired token)
+    // Handle 401 Unauthorized (expired token or missing token)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem('appecom_admin_refresh_token');
@@ -36,19 +36,28 @@ api.interceptors.response.use(
           const res = await axios.post(`${refreshBaseUrl}/auth/refresh-token`, {
             refreshToken,
           });
-          const newAccessToken = res.data?.data?.accessToken;
+          const newAccessToken = res.data?.data?.accessToken || res.data?.data?.token;
           const newRefreshToken = res.data?.data?.refreshToken;
 
           if (newAccessToken) {
             localStorage.setItem('appecom_admin_token', newAccessToken);
             if (newRefreshToken) localStorage.setItem('appecom_admin_refresh_token', newRefreshToken);
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-            return axios(originalRequest);
+            return api(originalRequest);
           }
         } catch (refreshErr) {
           localStorage.removeItem('appecom_admin_token');
           localStorage.removeItem('appecom_admin_refresh_token');
           localStorage.removeItem('appecom_admin_user');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+      } else {
+        localStorage.removeItem('appecom_admin_token');
+        localStorage.removeItem('appecom_admin_refresh_token');
+        localStorage.removeItem('appecom_admin_user');
+        if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
       }

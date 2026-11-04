@@ -24,6 +24,10 @@ const reportController = require('../controllers/admin/adminReportController');
 const settingController = require('../controllers/admin/adminSettingController');
 const sellerManagementController = require('../controllers/admin/adminSellerManagementController');
 const deliveryManagementController = require('../controllers/admin/adminDeliveryManagementController');
+const franchiseController = require('../controllers/admin/adminFranchiseController');
+const supportController = require('../controllers/admin/adminSupportController');
+const notificationController = require('../controllers/admin/adminNotificationController');
+const commissionController = require('../controllers/admin/adminCommissionController');
 
 /* ---------------------------------------------
  * 1. ADMIN AUTHENTICATION
@@ -121,6 +125,7 @@ router.post(
  * 6. ORDER MANAGEMENT
  * --------------------------------------------- */
 router.get('/orders', protectAdmin, orderController.getOrders);
+router.get('/orders/export/csv', protectAdmin, orderController.exportOrdersCSV);
 router.get('/orders/:id', protectAdmin, orderController.getOrderById);
 router.get('/orders/:id/invoice', protectAdmin, orderController.getOrderInvoice);
 router.patch(
@@ -140,7 +145,9 @@ router.patch(
  * 7. CUSTOMER MANAGEMENT
  * --------------------------------------------- */
 router.get('/customers', protectAdmin, customerController.getCustomers);
+router.get('/customers/export/csv', protectAdmin, customerController.exportCustomersCSV);
 router.get('/customers/:id', protectAdmin, customerController.getCustomerDetails);
+router.put('/customers/:id', protectAdmin, requireRole('super_admin', 'admin'), customerController.updateCustomer);
 router.patch(
   '/customers/:id/toggle-status',
   protectAdmin,
@@ -336,8 +343,9 @@ router.patch(
 );
 
 /* ---------------------------------------------
- * 18. DELIVERY PARTNER FLEET MANAGEMENT
+ * 18. DELIVERY PARTNER FLEET MANAGEMENT & LIVE GPS
  * --------------------------------------------- */
+router.get('/delivery-partners/live-map', protectAdmin, deliveryManagementController.getLiveFleetMap);
 router.get('/delivery-partners', protectAdmin, deliveryManagementController.getDeliveryPartners);
 router.get('/delivery-partners/:id', protectAdmin, deliveryManagementController.getDeliveryPartnerDetails);
 router.patch(
@@ -345,6 +353,12 @@ router.patch(
   protectAdmin,
   requireRole('super_admin', 'admin'),
   deliveryManagementController.updateDeliveryPartnerStatus
+);
+router.post(
+  '/delivery-partners/assign-order',
+  protectAdmin,
+  requireRole('super_admin', 'admin', 'order_manager'),
+  deliveryManagementController.assignOrderManually
 );
 
 /* ---------------------------------------------
@@ -357,6 +371,91 @@ router.patch(
   requireRole('super_admin', 'admin'),
   deliveryManagementController.updateDeliveryPayoutStatus
 );
+
+/* ---------------------------------------------
+ * 20. FRANCHISE HUB MANAGEMENT
+ * --------------------------------------------- */
+router.get('/franchises', protectAdmin, franchiseController.getFranchises);
+router.get('/franchises/:id', protectAdmin, franchiseController.getFranchiseDetails);
+router.post(
+  '/franchises',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  franchiseController.createFranchise
+);
+router.put(
+  '/franchises/:id',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  franchiseController.updateFranchise
+);
+router.patch(
+  '/franchises/:id/status',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  franchiseController.updateFranchiseStatus
+);
+router.post(
+  '/franchises/:id/assign-seller',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  franchiseController.assignSeller
+);
+router.post(
+  '/franchises/:id/remove-seller',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  franchiseController.removeSeller
+);
+
+/* ---------------------------------------------
+ * 21. SUPPORT & COMPLAINT TICKET MANAGEMENT
+ * --------------------------------------------- */
+router.get('/support/tickets', protectAdmin, supportController.getTickets);
+router.get('/support/tickets/:id', protectAdmin, supportController.getTicketDetails);
+router.post('/support/tickets', protectAdmin, supportController.createTicket);
+router.post('/support/tickets/:id/reply', protectAdmin, supportController.replyTicket);
+router.patch(
+  '/support/tickets/:id/status',
+  protectAdmin,
+  requireRole('super_admin', 'admin', 'support_manager'),
+  supportController.updateTicketStatus
+);
+router.patch(
+  '/support/tickets/:id/assign',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  supportController.assignTicket
+);
+
+/* ---------------------------------------------
+ * 22. BROADCAST & TARGETED NOTIFICATIONS
+ * --------------------------------------------- */
+router.get('/notifications', protectAdmin, notificationController.getNotifications);
+router.post(
+  '/notifications/send',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  notificationController.sendNotification
+);
+
+/* ---------------------------------------------
+ * 23. COMMISSION CONFIGURATION & REVENUE RULES
+ * --------------------------------------------- */
+router.get('/commissions', protectAdmin, commissionController.getCommissionSettings);
+router.put(
+  '/commissions',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  commissionController.updateCommissionSettings
+);
+router.patch(
+  '/commissions/category/:id',
+  protectAdmin,
+  requireRole('super_admin', 'admin'),
+  commissionController.updateCategoryCommission
+);
+router.get('/commissions/ledger', protectAdmin, commissionController.getCommissionLedger);
 
 module.exports = router;
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, Store, Shield, Truck, FileText, AlertCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Store, Shield, Truck, FileText, AlertCircle, Coins } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,12 @@ export const Settings = () => {
       standardCharge: 40,
       expressSurcharge: 50,
       codAvailable: true,
+    },
+    commissions: {
+      defaultSellerCommission: 10,
+      franchiseCommission: 5,
+      deliveryPartnerBaseFee: 40,
+      minDeliveryCharge: 20,
     },
     policies: {
       returnWindowDays: 7,
@@ -256,6 +262,108 @@ export const Settings = () => {
               />
               <span>Enable Cash on Delivery (COD) across serviceable PIN codes</span>
             </label>
+          </div>
+        </div>
+
+        {/* Default Platform Commissions & Logistics Payouts */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+          <h3 className="font-bold text-sm text-gray-900 dark:text-white flex items-center space-x-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+            <Coins size={18} className="text-amber-500" />
+            <span>Marketplace Platform Commissions & Logistics Rates</span>
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                Default Seller Commission (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={settings.commissions?.defaultSellerCommission ?? 10}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    commissions: {
+                      ...settings.commissions,
+                      defaultSellerCommission: Number(e.target.value),
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none"
+              />
+              <span className="text-[10px] text-gray-400">Marketplace fee deducted per item</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                Franchise Hub Commission (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                value={settings.commissions?.franchiseCommission ?? 5}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    commissions: {
+                      ...settings.commissions,
+                      franchiseCommission: Number(e.target.value),
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none"
+              />
+              <span className="text-[10px] text-gray-400">Paid to regional city franchise</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                Delivery Rider Fee / Order (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={settings.commissions?.deliveryPartnerBaseFee ?? 40}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    commissions: {
+                      ...settings.commissions,
+                      deliveryPartnerBaseFee: Number(e.target.value),
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none"
+              />
+              <span className="text-[10px] text-gray-400">Base payout credited to delivery boy</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                Minimum Delivery Charge (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={settings.commissions?.minDeliveryCharge ?? 20}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    commissions: {
+                      ...settings.commissions,
+                      minDeliveryCharge: Number(e.target.value),
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none"
+              />
+              <span className="text-[10px] text-gray-400">Minimum threshold charge</span>
+            </div>
           </div>
         </div>
 

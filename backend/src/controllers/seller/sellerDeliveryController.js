@@ -7,7 +7,8 @@ const DeliveryAssignment = require('../../models/DeliveryAssignment');
 const Delivery = require('../../models/Delivery');
 const SellerOrder = require('../../models/SellerOrder');
 const Order = require('../../models/Order');
-const { emitToDeliveryPartner } = require('../../sockets/socketManager');
+const { emitToDeliveryPartner, emitToOrder } = require('../../sockets/socketManager');
+const { syncParentOrderStatus } = require('../../utils/orderSync');
 
 /**
  * Get Available Approved Delivery Partners for Seller
@@ -179,6 +180,71 @@ const assignDeliveryPartner = async (req, res) => {
       specialInstructions: specialInstructions || 'Deliver securely to customer.',
     });
 
+    // Atomically Update Seller Sub-Order
+    if (order) {
+      order.deliveryPartner = partner._id;
+      order.deliveryPartnerName = partner.name;
+      order.deliveryPartnerPhone = partner.phone;
+      order.deliveryPartnerVehicleType = partner.vehicleType || 'Bike';
+      order.deliveryPartnerVehicleNumber = partner.vehicleNumber || '';
+      order.deliveryPartnerRating = partner.rating || 4.8;
+      order.deliveryAssignment = assignment._id;
+      order.assignedAt = new Date();
+      order.assignedBy = sellerId;
+      order.status = 'pickup_scheduled';
+
+      order.shipping = order.shipping || {};
+      order.shipping.deliveryPartnerId = partner._id;
+      order.shipping.deliveryPartnerName = partner.name;
+      order.shipping.deliveryPartnerPhone = partner.phone;
+      order.shipping.vehicleType = partner.vehicleType || 'Bike';
+      order.shipping.vehicleNumber = partner.vehicleNumber || '';
+      order.shipping.courierName = `${partner.name} (${partner.vehicleType || 'Delivery Partner'})`;
+      if (!order.shipping.trackingNumber) {
+        order.shipping.trackingNumber = 'BBIN-' + Math.floor(100000000 + Math.random() * 900000000);
+      }
+      order.shipping.trackingHistory = order.shipping.trackingHistory || [];
+      order.shipping.trackingHistory.push({
+        status: 'Delivery Partner Assigned',
+        location: req.seller.storeName || 'Logistics Hub',
+        timestamp: new Date(),
+        remarks: `Assigned to ${partner.name} (${partner.phone})`,
+      });
+
+      await order.save();
+    }
+
+    // Atomically Update Parent Order for Customer Tracking
+    try {
+      await syncParentOrderStatus(order ? (order.order || order.orderNumber) : orderNum);
+    } catch (parentErr) {
+      console.warn('Parent order update warning:', parentErr?.message);
+    }
+
+    // Add to Partner Active Task list
+    try {
+      await DeliveryPartner.findByIdAndUpdate(partner._id, {
+        $inc: { currentActiveDeliveries: 1 },
+        $push: {
+          assignedTasks: {
+            order: order ? order.order : new (require('mongoose').Types.ObjectId)(),
+            orderNumber: orderNum,
+            customerName: customerName,
+            customerPhone: customerPhone,
+            deliveryAddress: assignment.deliveryAddress,
+            paymentMethod: assignment.paymentMethod,
+            amountToCollect: assignment.amountToCollect,
+            deliveryFee: assignment.deliveryFee,
+            status: 'assigned',
+            pickupOtp: '7821',
+            deliveryOtp: '4521',
+          },
+        },
+      });
+    } catch (taskErr) {
+      console.warn('Partner task push warning:', taskErr?.message);
+    }
+
     // Notify Rider via Real-Time Socket.IO
     emitToDeliveryPartner(partner._id, 'delivery:new_assignment', {
       assignmentId: assignment.assignmentId,
@@ -191,11 +257,26 @@ const assignDeliveryPartner = async (req, res) => {
       deadline: assignment.responseDeadline,
     });
 
+    // Notify Customer & Tracking Room
+    emitToOrder(orderNum, 'delivery:partner_assigned', {
+      orderId: orderNum,
+      status: 'delivery_partner_assigned',
+      partner: {
+        _id: partner._id,
+        name: partner.name,
+        phone: partner.phone,
+        vehicleType: partner.vehicleType || 'Bike',
+        vehicleNumber: partner.vehicleNumber || '',
+        rating: partner.rating || 4.85,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: `Delivery assigned to ${partner.name}! Rider notified in real time.`,
-      data: { assignment },
+      data: { assignment, order },
       assignment,
+      order,
     });
   } catch (error) {
     console.error('Assign Delivery Error:', error);
@@ -258,6 +339,31 @@ const cancelAssignment = async (req, res) => {
     assignment.status = 'cancelled';
     assignment.cancelledAt = new Date();
     await assignment.save();
+
+    // Reset SellerOrder back to ready_for_pickup
+    try {
+      await SellerOrder.findOneAndUpdate(
+        {
+          $or: [
+            { orderNumber: assignment.orderNumber },
+            { subOrderNumber: assignment.orderNumber },
+            { order: assignment.order },
+          ],
+          seller: sellerId,
+        },
+        {
+          $set: {
+            status: 'ready_for_pickup',
+            deliveryPartner: null,
+            deliveryPartnerName: '',
+            deliveryPartnerPhone: '',
+            deliveryAssignment: null,
+          },
+        }
+      );
+    } catch (soErr) {
+      console.warn('Revert SellerOrder status warning:', soErr?.message);
+    }
 
     emitToDeliveryPartner(assignment.deliveryPartner, 'delivery:cancelled', {
       assignmentId: assignment.assignmentId,

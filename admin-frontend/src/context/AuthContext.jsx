@@ -30,7 +30,16 @@ export const AuthProvider = ({ children }) => {
               localStorage.setItem('appecom_admin_user', JSON.stringify(res.data.admin));
             }
           })
-          .catch(() => {});
+          .catch((err) => {
+            // If token is invalid or expired and cannot be refreshed, clear session
+            if (err?.status === 401 || err?.status === 403) {
+              setToken(null);
+              setAdmin(null);
+              localStorage.removeItem('appecom_admin_token');
+              localStorage.removeItem('appecom_admin_refresh_token');
+              localStorage.removeItem('appecom_admin_user');
+            }
+          });
       }
     } catch (e) {
       console.warn('Failed restoring admin session', e);

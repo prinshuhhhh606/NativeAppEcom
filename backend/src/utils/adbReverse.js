@@ -8,6 +8,11 @@ const path = require('path');
 const fs = require('fs');
 
 function findAdb() {
+  const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK || process.env.ANDROID_SDK_ROOT || '';
+  if (androidHome) {
+    const candidate = path.join(androidHome, 'platform-tools', 'adb.exe');
+    if (fs.existsSync(candidate)) return candidate;
+  }
   const localAppData = process.env.LOCALAPPDATA || '';
   const standardPath = path.join(localAppData, 'Android', 'Sdk', 'platform-tools', 'adb.exe');
   if (fs.existsSync(standardPath)) {

@@ -75,6 +75,13 @@ const storeSettingSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    commissions: {
+      defaultSellerCommission: { type: Number, default: 10 },
+      defaultFranchiseCommission: { type: Number, default: 3.5 },
+      defaultDeliveryPartnerFee: { type: Number, default: 65 },
+      minimumDeliveryCharge: { type: Number, default: 40 },
+      platformCommission: { type: Number, default: 5 },
+    },
   },
   {
     timestamps: true,

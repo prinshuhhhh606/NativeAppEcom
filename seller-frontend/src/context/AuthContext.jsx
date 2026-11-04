@@ -41,11 +41,15 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const res = await sellerService.login({ email, password });
-      const sellerData = res.data?.seller;
+      const sellerData = res.data?.seller || res.seller;
       if (sellerData && !sellerData._id) sellerData._id = sellerData.id;
-      const authToken = res.data?.accessToken || res.data?.token;
+      const authToken = res.data?.accessToken || res.accessToken || res.data?.token || res.token;
+      const refreshToken = res.data?.refreshToken || res.refreshToken;
 
       localStorage.setItem('seller_token', authToken);
+      if (refreshToken) {
+        localStorage.setItem('seller_refresh_token', refreshToken);
+      }
       localStorage.setItem('seller_user', JSON.stringify(sellerData));
       setToken(authToken);
       setSeller(sellerData);
@@ -53,28 +57,71 @@ export const AuthProvider = ({ children }) => {
       toast.success(`Welcome back, ${sellerData?.name || 'Partner'}!`);
       return { success: true, seller: sellerData };
     } catch (err) {
-      toast.error(err.message || 'Login failed. Please check credentials.');
-      return { success: false, error: err.message };
+      const errorData = err.data || {};
+      const status = errorData.status || (err.status === 403 ? 'pending' : null);
+      const rejectionReason = errorData.rejectionReason || '';
+      const message = err.message || errorData.message || 'Login failed. Please check credentials.';
+
+      // Only show toast if not a structured approval status handled inline
+      if (!['pending', 'rejected', 'suspended', 'blocked', 'under_review'].includes(status)) {
+        toast.error(message);
+      }
+      return {
+        success: false,
+        error: message,
+        message,
+        status,
+        rejectionReason,
+        httpStatus: err.status,
+      };
     }
   };
 
   const register = async (formData) => {
     try {
       const res = await sellerService.register(formData);
-      const sellerData = res.data?.seller;
+      const sellerData = res.data?.seller || res.seller;
       if (sellerData && !sellerData._id) sellerData._id = sellerData.id;
-      const authToken = res.data?.accessToken || res.data?.token;
 
-      localStorage.setItem('seller_token', authToken);
-      localStorage.setItem('seller_user', JSON.stringify(sellerData));
-      setToken(authToken);
-      setSeller(sellerData);
+      // Pending admin approval workflow
+      if (
+        res.requiresApproval ||
+        res.status === 'pending' ||
+        res.data?.requiresApproval ||
+        sellerData?.status === 'pending'
+      ) {
+        const msg =
+          res.message ||
+          'Your seller registration has been submitted successfully. Please wait for Admin approval.';
+        toast.success(msg, { duration: 6000 });
+        return {
+          success: true,
+          requiresApproval: true,
+          status: 'pending',
+          message: msg,
+          seller: sellerData,
+        };
+      }
+
+      const authToken = res.data?.accessToken || res.accessToken || res.data?.token || res.token;
+      const refreshToken = res.data?.refreshToken || res.refreshToken;
+
+      if (authToken) {
+        localStorage.setItem('seller_token', authToken);
+        if (refreshToken) {
+          localStorage.setItem('seller_refresh_token', refreshToken);
+        }
+        localStorage.setItem('seller_user', JSON.stringify(sellerData));
+        setToken(authToken);
+        setSeller(sellerData);
+      }
 
       toast.success('Seller registration successful! Welcome to Bharat Bazaar.');
       return { success: true, seller: sellerData };
     } catch (err) {
-      toast.error(err.message || 'Registration failed');
-      return { success: false, error: err.message };
+      const message = err.message || err.data?.message || 'Registration failed';
+      toast.error(message);
+      return { success: false, error: message };
     }
   };
 
@@ -83,6 +130,7 @@ export const AuthProvider = ({ children }) => {
       sellerService.logout().catch(() => {});
     } catch (_) {}
     localStorage.removeItem('seller_token');
+    localStorage.removeItem('seller_refresh_token');
     localStorage.removeItem('seller_user');
     setToken(null);
     setSeller(null);
@@ -108,6 +156,11 @@ export const AuthProvider = ({ children }) => {
   const isApproved = seller?.status === 'approved';
   const isUnderReview = seller?.status === 'under_review';
   const isPendingVerification = seller?.status === 'pending_verification';
+  const isPending =
+    seller?.status === 'pending' ||
+    seller?.status === 'pending_verification' ||
+    seller?.status === 'under_review';
+  const isRejected = seller?.status === 'rejected';
   const isSuspended = seller?.status === 'suspended' || seller?.status === 'blocked';
 
   return (
@@ -118,6 +171,8 @@ export const AuthProvider = ({ children }) => {
         loading,
         isAuthenticated: !!token && !!seller,
         isApproved,
+        isPending,
+        isRejected,
         isUnderReview,
         isPendingVerification,
         isSuspended,

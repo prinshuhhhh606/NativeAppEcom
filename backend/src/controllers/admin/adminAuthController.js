@@ -62,6 +62,7 @@ const login = asyncHandler(async (req, res) => {
       },
       accessToken,
       refreshToken,
+      token: accessToken,
     },
     'Admin authenticated successfully'
   );
@@ -132,14 +133,24 @@ const refreshToken = asyncHandler(async (req, res) => {
     return errorResponse(res, 'Refresh token required', 400);
   }
 
-  const decoded = verifyRefreshToken(incomingToken);
-  if (!decoded) {
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(incomingToken);
+  } catch (err) {
     return errorResponse(res, 'Invalid or expired session. Please login again.', 401);
   }
 
-  const admin = await Admin.findById(decoded.id);
-  if (!admin || admin.refreshToken !== incomingToken) {
+  if (!decoded || !decoded.id) {
+    return errorResponse(res, 'Invalid session token payload.', 401);
+  }
+
+  const admin = await Admin.findById(decoded.id).select('+refreshToken');
+  if (!admin || !admin.refreshToken || admin.refreshToken !== incomingToken) {
     return errorResponse(res, 'Session terminated. Please login again.', 401);
+  }
+
+  if (!admin.isActive) {
+    return errorResponse(res, 'This admin account is disabled. Contact Super Admin.', 403);
   }
 
   const newAccessToken = generateAccessToken(admin._id, admin.role);
@@ -150,7 +161,11 @@ const refreshToken = asyncHandler(async (req, res) => {
 
   return successResponse(
     res,
-    { accessToken: newAccessToken, refreshToken: newRefreshToken },
+    {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      token: newAccessToken,
+    },
     'Session refreshed'
   );
 });

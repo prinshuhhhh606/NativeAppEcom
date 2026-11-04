@@ -48,10 +48,11 @@ const successResponse = (res, dataOrOptions = null, message = 'Success', statusC
   return res.status(finalStatusCode).json(payload);
 };
 
-const errorResponse = (res, messageOrOptions = 'Something went wrong', statusCode = 500, errors = []) => {
+const errorResponse = (res, messageOrOptions = 'Something went wrong', statusCode = 500, errors = [], extra = {}) => {
   let finalMessage = messageOrOptions;
   let finalStatusCode = statusCode;
   let finalErrors = errors;
+  let finalExtra = extra;
 
   if (
     messageOrOptions &&
@@ -61,12 +62,17 @@ const errorResponse = (res, messageOrOptions = 'Something went wrong', statusCod
     finalMessage = messageOrOptions.message || 'Something went wrong';
     finalStatusCode = messageOrOptions.statusCode || 500;
     finalErrors = messageOrOptions.errors || [];
+    finalExtra = messageOrOptions.extra || {};
+  } else if (errors && typeof errors === 'object' && !Array.isArray(errors)) {
+    finalExtra = errors;
+    finalErrors = errors.errors || [];
   }
 
   return res.status(finalStatusCode).json({
     success: false,
     message: finalMessage,
     errors: Array.isArray(finalErrors) ? finalErrors : [finalErrors],
+    ...finalExtra,
   });
 };
 

@@ -1,14 +1,42 @@
 const { body } = require('express-validator');
 
 const registerValidator = [
-  body('name').trim().notEmpty().withMessage('Full name is required').isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
-  body('email').trim().notEmpty().withMessage('Email address is required').isEmail().withMessage('Please provide a valid email address').normalizeEmail(),
-  body('phone')
-    .optional({ checkFalsy: true })
+  body().custom((value, { req }) => {
+    const fullName = (req.body.fullName || req.body.name || '').toString().trim();
+    if (!fullName) {
+      throw new Error('Full name is required');
+    }
+    if (fullName.length < 2) {
+      throw new Error('Full name must be at least 2 characters');
+    }
+    return true;
+  }),
+  body().custom((value, { req }) => {
+    const rawMobile = req.body.mobileNumber || req.body.phone;
+    if (!rawMobile) {
+      throw new Error('Mobile number is required');
+    }
+    const cleanMobile = rawMobile.toString().trim().replace(/[^0-9]/g, '');
+    if (!cleanMobile) {
+      throw new Error('Mobile number is required');
+    }
+    if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+      throw new Error('Please enter a valid 10-digit Indian mobile number starting with 6-9');
+    }
+    return true;
+  }),
+  body('email')
     .trim()
-    .matches(/^[6-9]\d{9}$/)
-    .withMessage('Please enter a valid 10-digit Indian mobile number starting with 6-9'),
-  body('password').notEmpty().withMessage('Password is required').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+    .notEmpty()
+    .withMessage('Email address is required')
+    .isEmail()
+    .withMessage('Please provide a valid email address')
+    .normalizeEmail(),
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
 ];
 
 const loginValidator = [
@@ -23,6 +51,11 @@ const loginValidator = [
     .trim()
     .matches(/^[6-9]\d{9}$/)
     .withMessage('Invalid 10-digit Indian mobile number'),
+  body('mobileNumber')
+    .optional()
+    .trim()
+    .matches(/^[6-9]\d{9}$/)
+    .withMessage('Invalid 10-digit Indian mobile number'),
   body('identifier')
     .optional()
     .trim()
@@ -30,7 +63,7 @@ const loginValidator = [
     .withMessage('Identifier cannot be empty'),
   body('password').notEmpty().withMessage('Password is required'),
   body().custom((value, { req }) => {
-    if (!req.body.email && !req.body.phone && !req.body.identifier) {
+    if (!req.body.email && !req.body.phone && !req.body.mobileNumber && !req.body.identifier) {
       throw new Error('Please provide an email or phone number to log in');
     }
     return true;

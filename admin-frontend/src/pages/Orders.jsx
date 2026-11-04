@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingBag,
   Search,
@@ -14,20 +14,33 @@ import {
   Calendar,
   CreditCard,
   AlertCircle,
+  Download,
+  Bike,
+  RefreshCw,
+  RotateCcw,
+  Package,
+  UserCheck,
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
+// Exactly 15 Status Tabs matching the Master Prompt
 const STATUS_TABS = [
-  'all',
-  'Pending',
-  'Confirmed',
-  'Processing',
-  'Packed',
-  'Shipped',
-  'OutForDelivery',
-  'Delivered',
-  'Cancelled',
+  { id: 'all', label: 'All Orders' },
+  { id: 'new', label: 'New' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'confirmed', label: 'Confirmed' },
+  { id: 'preparing', label: 'Preparing' },
+  { id: 'ready_for_pickup', label: 'Ready for Pickup' },
+  { id: 'delivery_requested', label: 'Delivery Requested' },
+  { id: 'delivery_partner_assigned', label: 'Rider Assigned' },
+  { id: 'picked_up', label: 'Picked Up' },
+  { id: 'shipped', label: 'Shipped / In Transit' },
+  { id: 'out_for_delivery', label: 'Out for Delivery' },
+  { id: 'delivered', label: 'Delivered' },
+  { id: 'cancelled', label: 'Cancelled' },
+  { id: 'refund_requested', label: 'Refund Requested' },
+  { id: 'refunded', label: 'Refunded' },
 ];
 
 export const Orders = () => {
@@ -37,6 +50,7 @@ export const Orders = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [exporting, setExporting] = useState(false);
 
   // Modals & Drawers
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -46,6 +60,11 @@ export const Orders = () => {
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
 
+  // Delivery partner list for manual assignment
+  const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [selectedRiderId, setSelectedRiderId] = useState('');
+  const [assignMode, setAssignMode] = useState('rider'); // 'rider' or '3pl'
+
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [courierForm, setCourierForm] = useState({
@@ -53,14 +72,10 @@ export const Orders = () => {
     trackingNumber: '',
   });
 
-  useEffect(() => {
-    fetchOrders();
-  }, [page, statusFilter]);
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      let query = `/orders?page=${page}&limit=12`;
+      let query = `/orders?page=${page}&limit=15`;
       if (statusFilter !== 'all') query += `&status=${statusFilter}`;
       if (search) query += `&search=${encodeURIComponent(search)}`;
 
@@ -72,7 +87,24 @@ export const Orders = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, statusFilter, search]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // Fetch active delivery partners for assignment
+  useEffect(() => {
+    const fetchPartners = async () => {
+      try {
+        const res = await api.get('/delivery-partners');
+        if (res.data) setDeliveryPartners(res.data);
+      } catch (err) {
+        // non-blocking
+      }
+    };
+    fetchPartners();
+  }, []);
 
   const handleOpenDetail = async (orderId) => {
     try {
@@ -109,6 +141,8 @@ export const Orders = () => {
 
   const handleOpenCourierModal = (order) => {
     setSelectedOrder(order);
+    setSelectedRiderId('');
+    setAssignMode('rider');
     setCourierForm({
       courierName: order.shippingDetails?.courierName || 'Delhivery Pan-India Express',
       trackingNumber: order.shippingDetails?.trackingNumber || `AWB${Date.now().toString().slice(-9)}`,
@@ -116,16 +150,28 @@ export const Orders = () => {
     setIsCourierModalOpen(true);
   };
 
-  const handleAssignCourier = async (e) => {
+  const handleDispatchOrder = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/orders/${selectedOrder._id}/courier`, courierForm);
-      toast.success('Courier assigned & order dispatched');
+      if (assignMode === 'rider') {
+        if (!selectedRiderId) {
+          toast.error('Please choose a delivery rider from fleet');
+          return;
+        }
+        await api.post('/delivery-partners/assign-order', {
+          orderId: selectedOrder._id,
+          partnerId: selectedRiderId,
+        });
+        toast.success('Rider assigned & pickup notification broadcasted');
+      } else {
+        await api.patch(`/orders/${selectedOrder._id}/courier`, courierForm);
+        toast.success('3PL Courier assigned & order dispatched');
+      }
       setIsCourierModalOpen(false);
       fetchOrders();
       if (isDetailOpen) handleOpenDetail(selectedOrder._id);
     } catch (err) {
-      toast.error(err.message || 'Failed to assign courier');
+      toast.error(err.message || 'Failed to dispatch order');
     }
   };
 
@@ -139,104 +185,157 @@ export const Orders = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Delivered':
-        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400';
-      case 'Cancelled':
-        return 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400';
-      case 'Shipped':
-      case 'OutForDelivery':
-        return 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400';
-      case 'Processing':
-      case 'Packed':
-        return 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400';
-      default:
-        return 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400';
+  const handleExportCSV = async () => {
+    try {
+      setExporting(true);
+      const token = localStorage.getItem('appecom_admin_token');
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1/admin';
+      const response = await fetch(`${baseUrl}/orders/export/csv`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error('Failed to export orders CSV');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `orders_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('Orders data exported to CSV');
+    } catch (err) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(false);
     }
   };
 
+  const getStatusBadge = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s.includes('delivered') || s === 'completed')
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-200';
+    if (s.includes('cancel') || s.includes('reject'))
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200';
+    if (s.includes('ship') || s.includes('transit') || s.includes('out_for_delivery') || s.includes('picked'))
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400 border-purple-200';
+    if (s.includes('prepar') || s.includes('pack') || s.includes('confirm') || s.includes('ready'))
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200';
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border-amber-200';
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            Order Fulfillment Center
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Real-time Pan-India order processing, dispatch, invoice generation and delivery tracking.
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/70 dark:bg-slate-900/70 p-6 rounded-3xl border border-indigo-100/60 dark:border-indigo-950/40 backdrop-blur-xl shadow-xl shadow-indigo-500/5">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/20">
+            <ShoppingBag className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+              Order Fulfillment Hub
+            </h1>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              Complete multi-vendor order pipeline with live dispatch and rider assignments
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={handleExportCSV}
+            disabled={exporting}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 transition">
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>{exporting ? 'Exporting...' : 'Export CSV'}</span>
+          </button>
+          <button
+            onClick={() => fetchOrders()}
+            className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition">
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Filter Tabs & Search */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-3">
-        <div className="flex space-x-1.5 overflow-x-auto pb-1 text-xs">
-          {STATUS_TABS.map((st) => (
-            <button
-              key={st}
-              onClick={() => {
-                setStatusFilter(st);
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
-                statusFilter === st
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-              }`}>
-              {st === 'all' ? 'All Orders' : st}
-            </button>
-          ))}
+      {/* 15 Status Tabs Horizontal Scroll Bar */}
+      <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
+        <div className="flex space-x-2 overflow-x-auto pb-1 text-xs no-scrollbar">
+          {STATUS_TABS.map((tab) => {
+            const isActive = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setStatusFilter(tab.id);
+                  setPage(1);
+                }}
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
+                  isActive
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                    : 'bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
+                }`}>
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
+      </div>
 
+      {/* Search Input Bar */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={17} />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by Order ID, Customer Name, or PIN code..."
+            placeholder="Search by Order ID, customer name, destination phone or PIN code..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && fetchOrders()}
-            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-white"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 dark:bg-slate-800 text-xs font-medium text-gray-900 dark:text-white border border-transparent focus:border-indigo-500 outline-none"
           />
         </div>
       </div>
 
       {/* Orders Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-gray-50/70 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 text-gray-400 font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Order ID & Date</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Delivery PIN</th>
-                <th className="py-3 px-4">Items</th>
-                <th className="py-3 px-4">Payment</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+            <thead className="bg-gray-50/80 dark:bg-slate-800/50 text-gray-400 dark:text-gray-500 font-black uppercase tracking-wider border-b border-gray-100 dark:border-slate-800">
+              <tr>
+                <th className="py-4 px-6">Order ID & Date</th>
+                <th className="py-4 px-6">Customer</th>
+                <th className="py-4 px-6">Destination</th>
+                <th className="py-4 px-6">Items</th>
+                <th className="py-4 px-6">Amount</th>
+                <th className="py-4 px-6">Status</th>
+                <th className="py-4 px-6 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60 font-medium">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-800 text-gray-700 dark:text-gray-300 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="py-12 text-center text-gray-400">
-                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     Loading orders...
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="py-12 text-center text-gray-400">
-                    No orders matching criteria
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                    <ShoppingBag className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    No orders found matching tab criteria.
                   </td>
                 </tr>
               ) : (
                 orders.map((o) => (
-                  <tr key={o._id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/40">
-                    <td className="py-3 px-4">
-                      <p className="font-extrabold text-blue-600">{o.orderId}</p>
+                  <tr key={o._id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/40 transition">
+                    <td className="py-4 px-6">
+                      <p className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        #{o.orderId || o.orderNumber || o._id?.slice(-8).toUpperCase()}
+                      </p>
                       <p className="text-[10px] text-gray-400">
                         {new Date(o.createdAt).toLocaleDateString('en-IN', {
                           month: 'short',
@@ -246,59 +345,64 @@ export const Orders = () => {
                         })}
                       </p>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-4 px-6">
                       <p className="font-bold text-gray-900 dark:text-white">
-                        {o.shippingAddress?.fullName || 'Customer'}
+                        {o.shippingAddress?.fullName || o.deliveryAddress?.fullName || 'Customer'}
                       </p>
-                      <p className="text-[10px] text-gray-400">{o.shippingAddress?.phone}</p>
+                      <p className="text-[10px] text-gray-400 font-mono">
+                        {o.shippingAddress?.phone || o.deliveryAddress?.phone || 'N/A'}
+                      </p>
                     </td>
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-gray-700 dark:text-gray-300">
-                        {o.shippingAddress?.city}, {o.shippingAddress?.pinCode}
+                    <td className="py-4 px-6">
+                      <span className="font-mono text-gray-600 dark:text-gray-400">
+                        {o.shippingAddress?.city || o.deliveryAddress?.city},{' '}
+                        {o.shippingAddress?.pinCode || o.deliveryAddress?.pinCode}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-300">
+                    <td className="py-4 px-6 font-semibold text-gray-700 dark:text-gray-300">
                       {o.items?.length || 0} items
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-gray-900 dark:text-white">
-                        ₹{o.pricing?.grandTotal}
+                    <td className="py-4 px-6">
+                      <div className="font-black text-gray-900 dark:text-white">
+                        ₹{Number(o.totalAmount || o.pricing?.grandTotal || 0).toLocaleString('en-IN')}
                       </div>
-                      <span className="text-[10px] text-gray-400">{o.paymentMethod}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${getStatusBadge(
-                          o.orderStatus
-                        )}`}>
-                        {o.orderStatus}
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold">
+                        {o.paymentMethod || 'Online'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right">
+                    <td className="py-4 px-6">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${getStatusBadge(
+                          o.orderStatus || o.status
+                        )}`}>
+                        {o.orderStatus || o.status}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end space-x-1.5">
                         <button
                           onClick={() => handleOpenDetail(o._id)}
                           title="View Details"
-                          className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">
-                          <Eye size={15} />
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition">
+                          <Eye size={16} />
                         </button>
                         <button
                           onClick={() => handleOpenStatusModal(o)}
                           title="Change Status"
-                          className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">
-                          <CheckCircle size={15} />
+                          className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition">
+                          <CheckCircle size={16} />
                         </button>
                         <button
                           onClick={() => handleOpenCourierModal(o)}
-                          title="Dispatch / Courier"
-                          className="p-1.5 text-gray-400 hover:text-purple-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">
-                          <Truck size={15} />
+                          title="Assign Courier / Rider"
+                          className="p-1.5 text-gray-400 hover:text-purple-600 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition">
+                          <Truck size={16} />
                         </button>
                         <button
                           onClick={() => handleViewInvoice(o._id)}
                           title="Print Invoice"
-                          className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">
-                          <Printer size={15} />
+                          className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition">
+                          <Printer size={16} />
                         </button>
                       </div>
                     </td>
@@ -318,13 +422,13 @@ export const Orders = () => {
             <div className="flex space-x-1">
               <button
                 disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
+                onClick={() => setPage((p) => p - 1)}
                 className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 disabled:opacity-40">
                 Previous
               </button>
               <button
                 disabled={page >= totalPages}
-                onClick={() => setPage(page + 1)}
+                onClick={() => setPage((p) => p + 1)}
                 className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 disabled:opacity-40">
                 Next
               </button>
@@ -333,73 +437,65 @@ export const Orders = () => {
         )}
       </div>
 
-      {/* Order Details Slide-over Drawer */}
+      {/* Order Details Drawer */}
       {isDetailOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex justify-end">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end animate-fade-in">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-full shadow-2xl p-6 overflow-y-auto border-l border-gray-100 dark:border-slate-800 flex flex-col justify-between">
             <div className="space-y-6">
-              {/* Drawer Header */}
               <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-slate-800">
                 <div>
-                  <h3 className="font-extrabold text-lg text-gray-900 dark:text-white">
-                    Order #{selectedOrder.orderId}
+                  <h3 className="font-black text-lg text-gray-900 dark:text-white">
+                    Order #{selectedOrder.orderId || selectedOrder._id?.slice(-8)}
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-400">
                     Placed on {new Date(selectedOrder.createdAt).toLocaleString('en-IN')}
                   </p>
                 </div>
                 <button
                   onClick={() => setIsDetailOpen(false)}
                   className="p-1.5 text-gray-400 hover:text-gray-600">
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               </div>
 
-              {/* Status and Action banner */}
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800 flex items-center justify-between">
+              {/* Status Banner */}
+              <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-slate-800/50 border border-indigo-100 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-bold text-gray-400 block uppercase">
-                    Status
-                  </span>
+                  <span className="text-[10px] font-bold text-gray-400 block uppercase">Fulfillment Status</span>
                   <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-black mt-1 ${getStatusBadge(
+                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-black mt-1 ${getStatusBadge(
                       selectedOrder.orderStatus
                     )}`}>
                     {selectedOrder.orderStatus}
                   </span>
                 </div>
-                <div className="space-x-2">
-                  <button
-                    onClick={() => handleOpenStatusModal(selectedOrder)}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-xs">
-                    Update Status
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleOpenStatusModal(selectedOrder)}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-sm hover:bg-indigo-700 transition">
+                  Change Status
+                </button>
               </div>
 
-              {/* Delivery Address Details */}
-              <div className="p-4 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-2 text-xs">
+              {/* Destination Address */}
+              <div className="p-4 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-1.5 text-xs">
                 <h4 className="font-bold text-gray-900 dark:text-white flex items-center space-x-1.5">
-                  <MapPin size={15} className="text-blue-600" />
+                  <MapPin size={15} className="text-indigo-600" />
                   <span>Pan India Delivery Destination</span>
                 </h4>
-                <p className="font-semibold text-gray-800 dark:text-gray-200">
+                <p className="font-bold text-gray-800 dark:text-gray-200">
                   {selectedOrder.shippingAddress?.fullName}
                 </p>
                 <p className="text-gray-500">
                   {selectedOrder.shippingAddress?.addressLine1}, {selectedOrder.shippingAddress?.city},{' '}
                   {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.pinCode}
                 </p>
-                <p className="text-gray-500 flex items-center space-x-1">
-                  <Phone size={13} />
-                  <span>Contact: {selectedOrder.shippingAddress?.phone}</span>
-                </p>
+                <p className="text-gray-500 font-mono">Phone: {selectedOrder.shippingAddress?.phone}</p>
               </div>
 
               {/* Items List */}
               <div className="space-y-3">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400">
-                  Ordered Products ({selectedOrder.items?.length})
+                  Items ({selectedOrder.items?.length || 0})
                 </h4>
                 <div className="divide-y divide-gray-100 dark:divide-slate-800">
                   {selectedOrder.items?.map((item, i) => (
@@ -415,7 +511,7 @@ export const Orders = () => {
                           Qty: {item.quantity} × ₹{item.price}
                         </p>
                       </div>
-                      <div className="font-extrabold text-sm text-gray-900 dark:text-white">
+                      <div className="font-black text-sm text-gray-900 dark:text-white">
                         ₹{item.price * item.quantity}
                       </div>
                     </div>
@@ -423,29 +519,19 @@ export const Orders = () => {
                 </div>
               </div>
 
-              {/* Price Breakdown */}
+              {/* Financial Totals */}
               <div className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800 space-y-2 text-xs font-medium">
                 <div className="flex justify-between text-gray-500">
                   <span>Subtotal</span>
-                  <span>₹{selectedOrder.pricing?.subtotal}</span>
+                  <span>₹{selectedOrder.pricing?.subtotal || selectedOrder.totalAmount}</span>
                 </div>
-                {selectedOrder.pricing?.discount > 0 && (
-                  <div className="flex justify-between text-emerald-600">
-                    <span>Discount Coupon</span>
-                    <span>-₹{selectedOrder.pricing?.discount}</span>
-                  </div>
-                )}
                 <div className="flex justify-between text-gray-500">
                   <span>Shipping Fee</span>
-                  <span>{selectedOrder.pricing?.shipping === 0 ? 'FREE' : `₹${selectedOrder.pricing?.shipping}`}</span>
-                </div>
-                <div className="flex justify-between text-gray-500">
-                  <span>GST (18% included)</span>
-                  <span>₹{selectedOrder.pricing?.gst}</span>
+                  <span>{selectedOrder.pricing?.shipping === 0 ? 'FREE' : `₹${selectedOrder.pricing?.shipping || 0}`}</span>
                 </div>
                 <div className="border-t border-gray-200 dark:border-slate-700 pt-2 flex justify-between font-black text-sm text-gray-900 dark:text-white">
                   <span>Grand Total</span>
-                  <span>₹{selectedOrder.pricing?.grandTotal}</span>
+                  <span>₹{selectedOrder.totalAmount || selectedOrder.pricing?.grandTotal}</span>
                 </div>
               </div>
             </div>
@@ -455,12 +541,12 @@ export const Orders = () => {
                 onClick={() => handleViewInvoice(selectedOrder._id)}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 flex items-center justify-center space-x-2">
                 <Printer size={15} />
-                <span>Print Invoice</span>
+                <span>View Tax Invoice</span>
               </button>
               <button
                 onClick={() => setIsDetailOpen(false)}
                 className="flex-1 py-2.5 rounded-xl bg-gray-900 dark:bg-slate-800 text-white text-xs font-bold">
-                Close
+                Close Drawer
               </button>
             </div>
           </div>
@@ -469,39 +555,53 @@ export const Orders = () => {
 
       {/* Status Transition Modal */}
       {isStatusModalOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-slate-800">
-            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
-              Update Order #{selectedOrder.orderId}
+            <h3 className="font-black text-base text-gray-900 dark:text-white mb-1">
+              Update Order #{selectedOrder.orderId || selectedOrder._id?.slice(-8)}
             </h3>
+            <p className="text-xs text-gray-400 mb-4">Select target fulfillment milestone in lifecycle</p>
 
             <form onSubmit={handleUpdateStatus} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
                   Target Status *
                 </label>
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold text-gray-800 dark:text-white outline-none">
-                  {STATUS_TABS.filter((s) => s !== 'all').map((st) => (
-                    <option key={st} value={st}>
-                      {st}
-                    </option>
-                  ))}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold text-gray-800 dark:text-white outline-none">
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Preparing">Preparing</option>
+                  <option value="Ready for Pickup">Ready for Pickup</option>
+                  <option value="Delivery Partner Assigned">Delivery Partner Assigned</option>
+                  <option value="Picked Up">Picked Up</option>
+                  <option value="Shipped">Shipped / In Transit</option>
+                  <option value="Out for Delivery">Out for Delivery</option>
+                  <option value="Delivered">Delivered</option>
+                  <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
 
+              {newStatus === 'Delivered' && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 font-semibold flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Note: Customer delivery verification normally requires the 4-digit OTP provided upon delivery.
+                  </span>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Audit / Customer Note
+                <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                  Audit Log / Operational Note
                 </label>
                 <input
                   type="text"
                   value={statusNote}
                   onChange={(e) => setStatusNote(e.target.value)}
-                  placeholder="e.g. Dispatched via morning delivery van"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs outline-none text-gray-800 dark:text-white"
+                  placeholder="e.g. Dispatched via express hub van"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs text-gray-800 dark:text-white outline-none"
                 />
               </div>
 
@@ -509,13 +609,13 @@ export const Orders = () => {
                 <button
                   type="button"
                   onClick={() => setIsStatusModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400">
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600">
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-sm">
-                  Save Status
+                  className="px-5 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-md shadow-indigo-500/20">
+                  Update Status
                 </button>
               </div>
             </form>
@@ -523,59 +623,107 @@ export const Orders = () => {
         </div>
       )}
 
-      {/* Courier & AWB Assignment Modal */}
+      {/* Courier & Rider Assignment Modal */}
       {isCourierModalOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-slate-800">
-            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
-              Dispatch & Courier Assignment
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-100 dark:border-slate-800">
+            <h3 className="font-black text-base text-gray-900 dark:text-white mb-1">
+              Dispatch & Delivery Assignment
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Assign courier partner and tracking AWB number for order #{selectedOrder.orderId}.
+              Assign order #{selectedOrder.orderId} to an internal delivery boy or external 3PL courier
             </p>
 
-            <form onSubmit={handleAssignCourier} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Courier Partner *
-                </label>
-                <select
-                  value={courierForm.courierName}
-                  onChange={(e) => setCourierForm({ ...courierForm, courierName: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold text-gray-800 dark:text-white outline-none">
-                  <option value="Delhivery Pan-India Express">Delhivery Pan-India Express</option>
-                  <option value="BlueDart Priority">BlueDart Priority Air</option>
-                  <option value="Ekart Logistics">Ekart Logistics</option>
-                  <option value="DTDC Surface & Air">DTDC Surface & Air</option>
-                  <option value="India Post SpeedPost">India Post SpeedPost</option>
-                </select>
-              </div>
+            {/* Toggle Mode */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setAssignMode('rider')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition ${
+                  assignMode === 'rider'
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                    : 'border-gray-200 dark:border-slate-700 text-gray-500'
+                }`}>
+                <Bike className="w-4 h-4" />
+                <span>Delivery Fleet Rider</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssignMode('3pl')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition ${
+                  assignMode === '3pl'
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                    : 'border-gray-200 dark:border-slate-700 text-gray-500'
+                }`}>
+                <Truck className="w-4 h-4" />
+                <span>3PL Courier Partner</span>
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  AWB / Tracking Number *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={courierForm.trackingNumber}
-                  onChange={(e) => setCourierForm({ ...courierForm, trackingNumber: e.target.value })}
-                  placeholder="AWB123456789"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none text-gray-800 dark:text-white"
-                />
-              </div>
+            <form onSubmit={handleDispatchOrder} className="space-y-4">
+              {assignMode === 'rider' ? (
+                <div>
+                  <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                    Select Active Delivery Boy *
+                  </label>
+                  <select
+                    value={selectedRiderId}
+                    onChange={(e) => setSelectedRiderId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold text-gray-800 dark:text-white outline-none"
+                    required>
+                    <option value="">-- Select Rider from Fleet --</option>
+                    {deliveryPartners.map((dp) => (
+                      <option key={dp._id} value={dp._id}>
+                        {dp.name} ({dp.phone}) - {dp.isOnline ? '🟢 Online' : '⚪ Offline'} [{dp.vehicleType || 'Bike'}]
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                      Courier Partner *
+                    </label>
+                    <select
+                      value={courierForm.courierName}
+                      onChange={(e) => setCourierForm({ ...courierForm, courierName: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-bold text-gray-800 dark:text-white outline-none">
+                      <option value="Delhivery Pan-India Express">Delhivery Pan-India Express</option>
+                      <option value="BlueDart Priority Air">BlueDart Priority Air</option>
+                      <option value="Ekart Logistics">Ekart Logistics</option>
+                      <option value="DTDC Surface & Air">DTDC Surface & Air</option>
+                      <option value="India Post SpeedPost">India Post SpeedPost</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                      AWB / Tracking Number *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={courierForm.trackingNumber}
+                      onChange={(e) => setCourierForm({ ...courierForm, trackingNumber: e.target.value })}
+                      placeholder="AWB123456789"
+                      className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-mono outline-none text-gray-800 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex justify-end space-x-3">
                 <button
                   type="button"
                   onClick={() => setIsCourierModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400">
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600">
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm">
-                  Mark Shipped & Dispatch
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20">
+                  Confirm Dispatch
                 </button>
               </div>
             </form>
@@ -585,8 +733,8 @@ export const Orders = () => {
 
       {/* Printable Invoice Modal */}
       {isInvoiceOpen && invoiceData && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white text-gray-900 rounded-2xl max-w-3xl w-full p-8 shadow-2xl border border-gray-200 relative">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white text-gray-900 rounded-3xl max-w-3xl w-full p-8 shadow-2xl border border-gray-200 relative">
             <button
               onClick={() => setIsInvoiceOpen(false)}
               className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 print:hidden">
@@ -597,29 +745,30 @@ export const Orders = () => {
               {/* Invoice Header */}
               <div className="flex justify-between items-start border-b border-gray-200 pb-6">
                 <div>
-                  <h2 className="text-2xl font-black text-blue-600 tracking-tight">
-                    {invoiceData.store?.name}
+                  <h2 className="text-2xl font-black text-indigo-600 tracking-tight">
+                    {invoiceData.store?.name || 'Bharat Bazaar'}
                   </h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    GSTIN: <span className="font-mono font-bold">{invoiceData.store?.gstin}</span>
+                    GSTIN: <span className="font-mono font-bold">{invoiceData.store?.gstin || '27AAAAA0000A1Z5'}</span>
                   </p>
                   <p className="text-xs text-gray-500">
-                    {invoiceData.store?.address?.addressLine}, {invoiceData.store?.address?.city}
+                    {invoiceData.store?.address?.addressLine || 'Central Logistics Hub, Sector 18'},{' '}
+                    {invoiceData.store?.address?.city || 'Mumbai'}
                   </p>
                 </div>
                 <div className="text-right">
                   <h3 className="text-lg font-black uppercase text-gray-800">Tax Invoice</h3>
-                  <p className="text-xs font-mono font-bold text-blue-600 mt-1">
+                  <p className="text-xs font-mono font-bold text-indigo-600 mt-1">
                     {invoiceData.invoiceNumber}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Date: {new Date(invoiceData.date).toLocaleDateString('en-IN')}
+                    Date: {new Date(invoiceData.date || Date.now()).toLocaleDateString('en-IN')}
                   </p>
                 </div>
               </div>
 
               {/* Bill To Info */}
-              <div className="bg-gray-50 p-4 rounded-xl text-xs">
+              <div className="bg-gray-50 p-4 rounded-2xl text-xs">
                 <span className="font-bold text-gray-400 uppercase text-[10px] block mb-1">
                   Billed & Delivered To:
                 </span>
@@ -629,7 +778,7 @@ export const Orders = () => {
               </div>
 
               {/* Items Table */}
-              <table className="w-full text-left text-xs border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-left text-xs border border-gray-200 rounded-xl overflow-hidden">
                 <thead className="bg-gray-100 text-gray-700 font-bold">
                   <tr>
                     <th className="py-2.5 px-3">#</th>
@@ -640,11 +789,11 @@ export const Orders = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 font-medium">
-                  {invoiceData.items?.map((it) => (
-                    <tr key={it.srNo}>
-                      <td className="py-2.5 px-3">{it.srNo}</td>
+                  {invoiceData.items?.map((it, idx) => (
+                    <tr key={idx}>
+                      <td className="py-2.5 px-3">{idx + 1}</td>
                       <td className="py-2.5 px-3 font-semibold">
-                        {it.name} <span className="text-gray-500">({it.variant})</span>
+                        {it.name} <span className="text-gray-500">{it.variant ? `(${it.variant})` : ''}</span>
                       </td>
                       <td className="py-2.5 px-3 text-center">{it.quantity}</td>
                       <td className="py-2.5 px-3 text-right font-mono">₹{it.unitPrice}</td>
@@ -686,16 +835,16 @@ export const Orders = () => {
                 </div>
               </div>
 
-              {/* Terms footer */}
+              {/* Footer */}
               <div className="border-t border-gray-200 pt-4 text-[10px] text-gray-400 text-center">
-                This is a computer-generated tax invoice. Registered under GST laws of India.
+                This is an official computer-generated tax invoice for marketplace goods.
               </div>
             </div>
 
             <div className="mt-6 flex justify-end space-x-3 print:hidden">
               <button
                 onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center space-x-2 shadow-sm">
+                className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center space-x-2 shadow-md">
                 <Printer size={15} />
                 <span>Print Invoice</span>
               </button>
@@ -708,4 +857,3 @@ export const Orders = () => {
 };
 
 export default Orders;
-

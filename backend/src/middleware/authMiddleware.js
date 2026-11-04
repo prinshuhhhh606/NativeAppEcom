@@ -1,9 +1,12 @@
 /**
  * JWT Authentication and Role-Based Authorization Middleware
+ * Includes Dual Access System support for Sellers shopping as Customers.
  */
 const { verifyAccessToken } = require('../utils/generateToken');
 const { errorResponse } = require('../utils/apiResponse');
 const User = require('../models/User');
+const Seller = require('../models/Seller');
+const { syncSellerToUser } = require('../utils/dualAccountBridge');
 
 const protect = async (req, res, next) => {
   let token;
@@ -23,7 +26,25 @@ const protect = async (req, res, next) => {
 
   try {
     const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.id).select('-passwordHash');
+    let user = await User.findById(decoded.id).select('-passwordHash');
+
+    // Dual Access Bridge: If token belongs to a Seller, ensure User record exists
+    if (!user) {
+      const seller = await Seller.findById(decoded.id);
+      if (seller) {
+        user = await syncSellerToUser(seller);
+        if (user) {
+          req.seller = seller;
+          req.isSeller = true;
+        }
+      }
+    } else if (user.role === 'seller' || decoded.role === 'seller') {
+      const seller = await Seller.findById(user._id);
+      if (seller) {
+        req.seller = seller;
+        req.isSeller = true;
+      }
+    }
 
     if (!user) {
       return errorResponse(res, {
@@ -51,10 +72,23 @@ const protect = async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
       return errorResponse(res, {
         statusCode: 403,
-        message: `Forbidden. Role '${req.user ? req.user.role : 'guest'}' does not have permission to access this resource.`,
+        message: 'Forbidden. No authenticated user identity found.',
+      });
+    }
+
+    const userRole = req.user.role;
+    // Dual Access: A seller has full customer permissions
+    const isAllowed =
+      roles.includes(userRole) ||
+      (roles.includes('customer') && (userRole === 'seller' || req.isSeller));
+
+    if (!isAllowed) {
+      return errorResponse(res, {
+        statusCode: 403,
+        message: `Forbidden. Role '${userRole || 'guest'}' does not have permission to access this resource.`,
       });
     }
     next();
@@ -75,7 +109,17 @@ const optionalAuth = async (req, res, next) => {
 
   try {
     const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.id).select('-passwordHash');
+    let user = await User.findById(decoded.id).select('-passwordHash');
+    if (!user) {
+      const seller = await Seller.findById(decoded.id);
+      if (seller) {
+        user = await syncSellerToUser(seller);
+        if (user) {
+          req.seller = seller;
+          req.isSeller = true;
+        }
+      }
+    }
     if (user && user.isActive) {
       req.user = user;
     }
@@ -90,4 +134,3 @@ module.exports = {
   authorize,
   optionalAuth,
 };
-

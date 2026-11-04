@@ -7,6 +7,7 @@ router.use(protect);
 
 router.get('/', cartController.getCart);
 router.post('/add', cartController.addToCart);
+router.post('/merge', cartController.mergeCart);
 router.put('/item/:itemId', cartController.updateCartItem);
 router.delete('/item/:itemId', cartController.removeFromCart);
 router.delete('/clear', cartController.clearCart);

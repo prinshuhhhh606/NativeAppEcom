@@ -17,16 +17,24 @@ const getProducts = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 20;
   const skip = (page - 1) * limit;
 
-  const { search, category, stockStatus, status, sortBy = 'createdAt_desc' } = req.query;
+  const { search, category, stockStatus, status, approvalStatus, sortBy = 'createdAt_desc' } = req.query;
   const query = {};
 
   if (search) {
     const regex = new RegExp(search.trim(), 'i');
-    query.$or = [{ name: regex }, { sku: regex }, { brand: regex }];
+    query.$or = [{ name: regex }, { productName: regex }, { sku: regex }, { brand: regex }];
   }
 
   if (category) {
     query.category = category;
+  }
+
+  if (approvalStatus && approvalStatus !== 'all') {
+    if (approvalStatus === 'pending' || approvalStatus === 'pending_approval') {
+      query.approvalStatus = { $in: ['pending', 'pending_approval'] };
+    } else {
+      query.approvalStatus = approvalStatus;
+    }
   }
 
   if (status === 'published') {
@@ -54,6 +62,7 @@ const getProducts = asyncHandler(async (req, res) => {
   const [products, total] = await Promise.all([
     Product.find(query)
       .populate('category', 'name slug')
+      .populate('seller', 'name businessName storeName email phone')
       .sort(sort)
       .skip(skip)
       .limit(limit),

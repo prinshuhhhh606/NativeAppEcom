@@ -6,7 +6,6 @@ import SellerLayout from './components/layout/SellerLayout';
 // Auth Pages
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
-import KycVerification from './pages/onboarding/KycVerification';
 
 // Operational Pages
 import Dashboard from './pages/dashboard/Dashboard';
@@ -20,6 +19,11 @@ import Reviews from './pages/reviews/Reviews';
 import Notifications from './pages/notifications/Notifications';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
+import Staff from './pages/staff/Staff';
+import Accounting from './pages/accounting/Accounting';
+import Protection from './pages/protection/Protection';
+import Growth from './pages/growth/Growth';
+import HelpCenter from './pages/help/HelpCenter';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -60,13 +64,18 @@ export const App = () => {
         <Route path="products" element={<Products />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="shipping" element={<Orders initialMode="shipping" />} />
+        <Route path="staff" element={<Staff />} />
+        <Route path="accounting" element={<Accounting />} />
+        <Route path="protection" element={<Protection />} />
+        <Route path="growth" element={<Growth />} />
+        <Route path="help" element={<HelpCenter />} />
         <Route path="returns" element={<Returns />} />
         <Route path="earnings" element={<Earnings />} />
         <Route path="payouts" element={<Payouts />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="reports" element={<Reports />} />
-        <Route path="kyc-verification" element={<KycVerification />} />
         <Route path="settings" element={<Settings />} />
       </Route>
 
