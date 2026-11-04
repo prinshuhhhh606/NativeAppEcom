@@ -149,7 +149,7 @@ const orderSchema = new mongoose.Schema(
     },
     orderStatus: {
       type: String,
-      default: ORDER_STATUS.CONFIRMED,
+      default: ORDER_STATUS.PENDING,
       index: true,
     },
     trackingNumber: {

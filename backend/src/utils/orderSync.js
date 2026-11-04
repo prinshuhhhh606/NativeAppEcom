@@ -11,9 +11,9 @@ const { getIO, emitToOrder, emitToCustomer, emitToSeller } = require('../sockets
 
 // Normalized rank hierarchy for order lifecycle progression
 const STATUS_RANK = {
-  placed: 1,
-  pending: 1,
-  new: 1,
+  placed: 0,
+  pending: 0,
+  new: 0,
   confirmed: 1,
   order_confirmed: 1,
   accepted: 1,

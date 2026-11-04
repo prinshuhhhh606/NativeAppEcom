@@ -81,7 +81,16 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static directory for uploaded media
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Appecom Backend API is running successfully!',
+    status: 'OK',
+    health: '/api/health',
+    version: '2.0.0'
+  });
+});
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
