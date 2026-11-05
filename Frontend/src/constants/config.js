@@ -4,7 +4,7 @@
 import { Platform } from 'react-native';
 
 const PORT = 5000;
-const CURRENT_LAN_IP = '192.168.1.16'; // Active Wi-Fi LAN IP (auto-detected via ipconfig)
+const CURRENT_LAN_IP = '10.139.94.95'; // Active Wi-Fi LAN IP (auto-detected via ipconfig)
 
 /**
  * Detect runtime environment and determine ideal primary API URL:

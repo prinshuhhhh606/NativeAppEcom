@@ -5,6 +5,45 @@ const Refund = require('../models/Refund');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const paymentService = require('../services/paymentService');
+const { emitOrderStatusUpdated } = require('../sockets/socketManager');
+const { syncParentOrderStatus } = require('../utils/orderSync');
+
+const markOrderConfirmedAfterPayment = async (order) => {
+  if (!order) return order;
+
+  const normalizedStatus = (order.orderStatus || '').toLowerCase();
+  const shouldConfirm = ['pending', 'placed', 'new', 'created', ''].includes(normalizedStatus);
+
+  if (shouldConfirm) {
+    order.orderStatus = 'confirmed';
+    order.confirmedAt = order.confirmedAt || new Date();
+  }
+
+  await order.save();
+
+  await SellerOrder.updateMany(
+    {
+      order: order._id,
+      status: { $in: ['pending', 'new', 'placed', ''] },
+    },
+    {
+      $set: {
+        status: 'confirmed',
+        acceptedAt: new Date(),
+      },
+    }
+  );
+
+  try {
+    await syncParentOrderStatus(order._id);
+  } catch (syncErr) {
+    console.warn('[Payment Confirm] Parent order sync failed:', syncErr?.message);
+  }
+
+  emitOrderStatusUpdated(order);
+
+  return order;
+};
 
 /**
  * Initialize Razorpay Order
@@ -79,12 +118,12 @@ const verifyPayment = asyncHandler(async (req, res) => {
     return errorResponse(res, 'Associated order not found', 404);
   }
 
-  // Update order status
+  // Update order status after successful payment
   order.paymentStatus = 'Paid';
   order.razorpayPaymentId = razorpay_payment_id;
   order.razorpaySignature = razorpay_signature;
   order.paidAt = new Date();
-  await order.save();
+  await markOrderConfirmedAfterPayment(order);
 
   // Record payment in Payment ledger
   const paymentRecord = await Payment.create({
@@ -144,7 +183,7 @@ const handleWebhook = asyncHandler(async (req, res) => {
       order.paymentStatus = 'Paid';
       order.paidAt = new Date();
       order.razorpayPaymentId = paymentEntity.id;
-      await order.save();
+      await markOrderConfirmedAfterPayment(order);
 
       // Synchronize SellerOrder
       await SellerOrder.updateMany(

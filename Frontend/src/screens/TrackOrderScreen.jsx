@@ -21,11 +21,11 @@ import socketService from '../services/socketService';
 import { useAuth } from '../context/AuthContext';
 
 // Normalized rank hierarchy for 7-milestone tracking progression:
-// Order Confirmed -> Processing -> Packed -> Shipped -> In Transit -> Out for Delivery -> Delivered
+// pending/placed (rank 0) → confirmed (rank 1) → processing → packed → shipped → in_transit → out_for_delivery → delivered
 const STATUS_RANK = {
-  placed: 1,
-  pending: 1,
-  new: 1,
+  placed: 0,
+  pending: 0,
+  new: 0,
   confirmed: 1,
   order_confirmed: 1,
   accepted: 1,
@@ -190,76 +190,144 @@ export const TrackOrderScreen = ({ route, navigation }) => {
   }, [handleBack]);
 
   // Load Order Data via REST API
+  const isMountedRef = useRef(true);
   const loadOrderRef = useRef(null);
+  const pollIntervalRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const getSocketConnectionState = useCallback(() => {
+    if (typeof socketService.isSocketConnected === 'function') {
+      return socketService.isSocketConnected();
+    }
+    if (typeof socketService.isConnected === 'function') {
+      return socketService.isConnected();
+    }
+    return Boolean(socketService.isConnected || socketService.socket?.connected);
+  }, []);
 
   const loadOrder = useCallback(async () => {
     const activeTargetId = targetOrderId || initialOrderId;
     if (!activeTargetId) {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
       return;
     }
-    try {
-      const data = await orderService.getLiveTracking(activeTargetId);
-      if (data) {
-        setOrder(data);
 
-        if (data.deliveryPartner) {
-          setDeliveryPartner(data.deliveryPartner);
+    if (loadOrderRef.current && loadOrderRef.current.orderId === activeTargetId) {
+      return loadOrderRef.current.promise;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const data = await orderService.getLiveTracking(activeTargetId);
+        if (!isMountedRef.current || (targetOrderId || initialOrderId) !== activeTargetId) {
+          return data;
         }
-        if (data.seller) {
-          setSellerInfo(data.seller);
+        if (data) {
+          setOrder(data);
+
+          if (data.deliveryPartner) {
+            setDeliveryPartner(data.deliveryPartner);
+          }
+          if (data.seller) {
+            setSellerInfo(data.seller);
+          }
+          if (data.liveTracking?.riderLocation) {
+            setRiderLocation(data.liveTracking.riderLocation);
+            setLastLocationPing(data.liveTracking.lastUpdatedAt || new Date());
+          }
+          if (data.liveTracking?.distanceRemainingKm !== undefined) {
+            setDistanceKm(data.liveTracking.distanceRemainingKm);
+          }
+          if (data.liveTracking?.estimatedMinutesRemaining !== undefined) {
+            setEtaMins(data.liveTracking.estimatedMinutesRemaining);
+          }
+          if (data.liveTracking?.pickupLocation) {
+            setPickupCoord(data.liveTracking.pickupLocation);
+          }
+          if (data.liveTracking?.destinationLocation) {
+            setDestCoord(data.liveTracking.destinationLocation);
+          }
         }
-        if (data.liveTracking?.riderLocation) {
-          setRiderLocation(data.liveTracking.riderLocation);
-          setLastLocationPing(data.liveTracking.lastUpdatedAt || new Date());
+        return data;
+      } catch (e) {
+        console.warn('[TrackOrder] Error fetching tracking details:', e);
+        const fallback = orderService._enrichOrderWithLiveTracking(passedOrder || { orderId: activeTargetId });
+        if (isMountedRef.current && (targetOrderId || initialOrderId) === activeTargetId) {
+          setOrder(fallback);
         }
-        if (data.liveTracking?.distanceRemainingKm !== undefined) {
-          setDistanceKm(data.liveTracking.distanceRemainingKm);
+        return fallback;
+      } finally {
+        if (isMountedRef.current && (targetOrderId || initialOrderId) === activeTargetId) {
+          setLoading(false);
         }
-        if (data.liveTracking?.estimatedMinutesRemaining !== undefined) {
-          setEtaMins(data.liveTracking.estimatedMinutesRemaining);
-        }
-        if (data.liveTracking?.pickupLocation) {
-          setPickupCoord(data.liveTracking.pickupLocation);
-        }
-        if (data.liveTracking?.destinationLocation) {
-          setDestCoord(data.liveTracking.destinationLocation);
+        if (loadOrderRef.current && loadOrderRef.current.orderId === activeTargetId) {
+          loadOrderRef.current = null;
         }
       }
-    } catch (e) {
-      console.warn('[TrackOrder] Error fetching tracking details:', e);
-      const fallback = orderService._enrichOrderWithLiveTracking(passedOrder || { orderId: activeTargetId });
-      setOrder(fallback);
-    } finally {
-      setLoading(false);
-    }
-  }, [targetOrderId, initialOrderId]);
+    })();
 
-  loadOrderRef.current = loadOrder;
+    loadOrderRef.current = { orderId: activeTargetId, promise: fetchPromise };
+    return fetchPromise;
+  }, [targetOrderId, initialOrderId, passedOrder]);
 
   useEffect(() => {
+    if (!targetOrderId && !initialOrderId) return;
     loadOrder();
-  }, [loadOrder]);
+  }, [loadOrder, targetOrderId, initialOrderId]);
 
   // Real-Time Socket.IO Live Synchronization + Polling Fallback
   useEffect(() => {
     if (!targetOrderId) return;
 
+    let cancelled = false;
     let unsubscribeConn = null;
+    const stopPolling = () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      if (cancelled || !isMountedRef.current) return;
+      pollIntervalRef.current = setInterval(() => {
+        if (cancelled || !isMountedRef.current) return;
+        if (getSocketConnectionState()) {
+          stopPolling();
+          return;
+        }
+        loadOrder();
+      }, 30000);
+    };
 
     const setupLiveTrackingSocket = async () => {
       try {
         await socketService.connect();
+        if (cancelled) return;
         unsubscribeConn = socketService.onConnectionChange((connected) => {
+          if (cancelled || !isMountedRef.current) return;
           setIsSocketConnected(connected);
           if (connected) {
-            loadOrderRef.current?.();
+            stopPolling();
+            return;
           }
+          startPolling();
         });
 
-        // Subscribe to live order room
         socketService.subscribeToOrder(targetOrderId, {
           onLocation: (locData) => {
+            if (cancelled || !isMountedRef.current) return;
             if (locData?.latitude && locData?.longitude) {
               setRiderLocation({
                 latitude: Number(locData.latitude),
@@ -278,6 +346,7 @@ export const TrackOrderScreen = ({ route, navigation }) => {
             }
           },
           onEta: (etaData) => {
+            if (cancelled || !isMountedRef.current) return;
             if (etaData?.etaMinutes !== undefined) {
               setEtaMins(etaData.etaMinutes);
             }
@@ -286,6 +355,7 @@ export const TrackOrderScreen = ({ route, navigation }) => {
             }
           },
           onStatus: (statusData) => {
+            if (cancelled || !isMountedRef.current) return;
             if (statusData?.status || statusData?.orderStatus) {
               const newStatus = statusData.orderStatus || statusData.status;
               setOrder((prev) => ({
@@ -296,34 +366,36 @@ export const TrackOrderScreen = ({ route, navigation }) => {
                 ...(statusData.timeline ? { timeline: statusData.timeline } : {}),
                 ...(statusData.trackingTimeline ? { trackingTimeline: statusData.trackingTimeline } : {}),
               }));
-              loadOrderRef.current?.();
+              loadOrder();
             }
           },
           onPartner: (partnerData) => {
+            if (cancelled || !isMountedRef.current) return;
             if (partnerData?.partner || partnerData?.deliveryPartner) {
               setDeliveryPartner(partnerData.partner || partnerData.deliveryPartner);
-              loadOrderRef.current?.();
+              loadOrder();
             }
           },
         });
+
+        if (!getSocketConnectionState()) {
+          startPolling();
+        }
       } catch (err) {
         console.warn('[TrackOrder] Socket initialization warning:', err?.message);
+        startPolling();
       }
     };
 
     setupLiveTrackingSocket();
 
-    // 10-second polling fallback interval while active
-    const pollInterval = setInterval(() => {
-      loadOrderRef.current?.();
-    }, 10000);
-
     return () => {
-      clearInterval(pollInterval);
+      cancelled = true;
+      stopPolling();
       socketService.unsubscribeFromOrder(targetOrderId);
       if (unsubscribeConn) unsubscribeConn();
     };
-  }, [targetOrderId]);
+  }, [targetOrderId, getSocketConnectionState, loadOrder]);
 
   const handleCallPartner = (phone) => {
     if (phone) {
@@ -428,13 +500,15 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     );
   }
 
-  const orderIdDisplay = order.orderId || order.orderNumber || targetOrderId || 'BBIN-782194';
+  const orderIdDisplay = order.orderId || order.orderNumber || targetOrderId || '';
   const courierPartnerDisplay = order.courierPartner || 'Bharat Bazaar Fleet Express';
-  const trackingNumberDisplay = order.trackingNumber || 'BBIN-' + Math.floor(100000000 + Math.random() * 900000000);
-  const currentStatusNorm = (order.orderStatus || order.status || 'placed').toLowerCase();
-  const currentRank = STATUS_RANK[currentStatusNorm] || 1;
+  const trackingNumberDisplay = order.trackingNumber || '';
+  const currentStatusNorm = (order.orderStatus || order.status || 'pending').toLowerCase();
+  // Use !== undefined so that pending (rank 0) is not coerced to 1
+  const currentRank = STATUS_RANK[currentStatusNorm] !== undefined ? STATUS_RANK[currentStatusNorm] : 0;
+  const isPendingApproval = currentRank === 0; // Order placed, awaiting seller acceptance
 
-  // Build canonical 8-milestone journey
+  // Build canonical milestone journey
   const trackingSteps = CANONICAL_STEPS.map((step) => {
     // Look up milestone in backend payload if provided
     const backendTimeline = Array.isArray(order?.timeline)
@@ -452,8 +526,8 @@ export const TrackOrderScreen = ({ route, navigation }) => {
         )
       : null;
 
-    const completed = currentRank >= step.rank;
-    const isCurrent = currentRank === step.rank;
+    const completed = currentRank >= 1 && currentRank >= step.rank;
+    const isCurrent = !isPendingApproval && currentRank === step.rank;
 
     let timeText = 'Pending';
     if (backendStep?.time && backendStep.time !== 'Pending') {
@@ -484,6 +558,26 @@ export const TrackOrderScreen = ({ route, navigation }) => {
           { paddingBottom: insets.bottom + 28 },
         ]}
         showsVerticalScrollIndicator={false}>
+
+        {/* Pending Seller Approval Banner — shown when order is awaiting seller acceptance */}
+        {isPendingApproval && (
+          <View style={{
+            marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+            backgroundColor: '#FFF8E1', borderRadius: 12, padding: 16,
+            borderLeftWidth: 4, borderLeftColor: '#F59E0B',
+            flexDirection: 'row', alignItems: 'center',
+          }}>
+            <AppIcon name="time-outline" size={28} color="#F59E0B" />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#92400E', marginBottom: 4 }}>
+                Awaiting Seller Approval
+              </Text>
+              <Text style={{ fontSize: 12, color: '#78350F', lineHeight: 18 }}>
+                Your order has been placed successfully. The seller will review and accept it shortly. Tracking begins after acceptance.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Live Socket Sync Banner */}
         <View style={styles.liveSyncBanner}>

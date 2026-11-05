@@ -403,7 +403,7 @@ const bulkUpdateOrders = asyncHandler(async (req, res) => {
   }
 
   const targetStatusMap = {
-    accept: { newStatus: 'accepted', eligibleCurrent: ['new'] },
+    accept: { newStatus: 'accepted', eligibleCurrent: ['new', 'pending'] },
     pack: { newStatus: 'packed', eligibleCurrent: ['accepted', 'processing'] },
     ready_for_pickup: { newStatus: 'ready_for_pickup', eligibleCurrent: ['packed'] },
   };

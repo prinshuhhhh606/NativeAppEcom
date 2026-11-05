@@ -35,9 +35,20 @@ class SocketService {
   }
 
   /**
+   * Synchronous accessor for the current socket instance (may be null if not yet connected)
+   */
+  getCurrentSocket() {
+    return this.socket || null;
+  }
+
+  /**
    * Connect to backend Socket.IO server with multi-candidate host failover
    */
   async connect(preferredUrl = null) {
+    if (this.socket && (this.isConnected || this.isConnecting)) {
+      return this.socket;
+    }
+
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
@@ -227,10 +238,11 @@ class SocketService {
   async subscribeToOrder(orderId, callbacks = {}) {
     if (!orderId) return;
 
-    this.activeSubscriptions.set(orderId, callbacks);
+    const existing = this.activeSubscriptions.get(orderId) || {};
+    this.activeSubscriptions.set(orderId, { ...existing, ...callbacks });
 
     const socket = await this.getSocket();
-    if (socket) {
+    if (socket && (this.isConnected || socket.connected)) {
       socket.emit('join_order_tracking', { orderId });
     }
   }
@@ -291,9 +303,15 @@ class SocketService {
   /**
    * Register connection state change listener
    */
+  isSocketConnected() {
+    return Boolean(this.socket?.connected || this.isConnected);
+  }
+
   onConnectionChange(listener) {
     this.connectionListeners.add(listener);
-    listener(this.isConnected);
+    try {
+      listener(Boolean(this.socket?.connected || this.isConnected));
+    } catch (e) {}
     return () => this.connectionListeners.delete(listener);
   }
 

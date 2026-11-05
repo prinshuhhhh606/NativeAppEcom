@@ -200,13 +200,14 @@ const createOrder = asyncHandler(async (req, res) => {
     totalAmount: pricing.grandTotal,
     paymentMethod: paymentMethod || 'UPI',
     paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Pending',
-    orderStatus: 'Confirmed',
+    orderStatus: 'pending',
     shippingDetails: {
       courierName: 'Delhivery Pan-India Express',
       estimatedDeliveryDate: estimatedDelivery.estimatedDeliveryDate,
     },
     trackingTimeline: [
-      { status: 'Order Confirmed', time: 'Just now', completed: true },
+      { status: 'Order Placed', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), completed: true },
+      { status: 'Seller Acceptance', time: 'Awaiting seller', completed: false },
       { status: 'Processing', time: 'Pending', completed: false },
       { status: 'Packed', time: 'Pending', completed: false },
       { status: 'Shipped', time: 'Pending', completed: false },
@@ -704,81 +705,12 @@ const trackOrder = asyncHandler(async (req, res) => {
     'images name productName brand price'
   );
 
-  // Fallback simulated order if not found anywhere in DB (so tracking view never fails with 404)
+  // Return 404 if order not found in DB — never serve simulated/dummy data
   if (!order) {
-    const fallbackOrderId = (cleanId && cleanId !== 'undefined' && cleanId !== 'null' && cleanId !== 'active')
-      ? cleanId
-      : 'BBIN-782194';
-    const isDelivered = fallbackOrderId.includes('4521');
-    const fallbackStatus = isDelivered ? 'delivered' : 'confirmed';
-    const isRiderActive = ['shipped', 'in_transit', 'out_for_delivery', 'picked_up'].includes(fallbackStatus);
-
-    const simulatedTimeline = buildTrackingTimeline(
-      { createdAt: new Date(Date.now() - 86400000 * 2), orderStatus: fallbackStatus },
-      fallbackStatus,
-      'Vikram Singh'
-    );
-
-    const fallbackPayload = {
-      orderId: fallbackOrderId,
-      orderNumber: fallbackOrderId,
-      orderStatus: fallbackStatus,
-      paymentMethod: 'UPI',
-      paymentStatus: 'Paid',
-      deliveryOtp: '4521',
-      totalAmount: 1299,
-      items: [
-        {
-          name: "Men's Pure Khadi Cotton Slim-Fit Kurta",
-          price: 1299,
-          quantity: 1,
-          image: 'https://images.unsplash.com/photo-1597983073493-88cd35cf93b0?w=600&q=80',
-        },
-      ],
-      trackingNumber: fallbackOrderId,
-      courierPartner: 'Delhivery Pan-India Express',
-      seller: {
-        storeName: 'Jaipur Heritage Handlooms',
-        phone: '9829012345',
-        address: 'MI Road Market, Jaipur',
-        city: 'Jaipur',
-      },
-      deliveryPartner: {
-        _id: '672728281a82f00012345679',
-        name: 'Vikram Singh',
-        phone: '9876543210',
-        vehicleType: 'Bike',
-        vehicleNumber: 'RJ-14-EA-4521',
-        rating: 4.88,
-        profilePhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80',
-      },
-      liveTracking: {
-        isActive: isRiderActive,
-        riderLocation: {
-          latitude: 26.9124,
-          longitude: 75.7873,
-        },
-        pickupLocation: {
-          latitude: 26.9124,
-          longitude: 75.7873,
-          storeName: 'Jaipur Heritage Handlooms',
-          addressText: 'MI Road Market, Jaipur',
-        },
-        destinationLocation: {
-          latitude: 26.8965,
-          longitude: 75.7523,
-          fullName: 'Customer Address',
-          addressText: 'Flat 402, Lotus Towers, Sector 62, Noida',
-        },
-        distanceRemainingKm: isDelivered ? 0 : isRiderActive ? 2.4 : 0,
-        estimatedMinutesRemaining: isDelivered ? 0 : isRiderActive ? 8 : 0,
-        lastUpdatedAt: new Date(),
-        locationStatus: isDelivered ? 'delivered' : isRiderActive ? 'live' : 'confirmed',
-      },
-      timeline: simulatedTimeline,
-    };
-
-    return successResponse(res, fallbackPayload, 'Live order tracking details retrieved (simulated)');
+    return res.status(404).json({
+      success: false,
+      message: 'Order not found. Please check the order ID and try again.',
+    });
   }
 
   // Self-heal and sync parent order status with linked SellerOrders & Delivery

@@ -398,9 +398,9 @@ export const secureStorage = {
       }
       await safeSetItems(itemsToSet);
       // Synchronize in-memory cache
-      setCachedToken(tokenKey, token);
-      if (refreshKey && refreshToken) setCachedToken(refreshKey, refreshToken);
-      setCachedToken(Config.STORAGE_KEYS.USER_ROLE, normalizedRole);
+      setCachedToken(Config.STORAGE_KEYS.ADMIN_TOKEN, token);
+      if (refreshToken) setCachedToken(Config.STORAGE_KEYS.ADMIN_REFRESH_TOKEN, refreshToken);
+      setCachedToken(Config.STORAGE_KEYS.USER_ROLE, 'admin');
       memoryCache.session = null; // Invalidate to rebuild cleanly
       return true;
     } catch (e) {

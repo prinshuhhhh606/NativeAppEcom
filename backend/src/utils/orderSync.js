@@ -11,7 +11,7 @@ const { getIO, emitToOrder, emitToCustomer, emitToSeller } = require('../sockets
 
 // Normalized rank hierarchy for order lifecycle progression
 const STATUS_RANK = {
-  placed: 0,
+  placed: 1,
   pending: 0,
   new: 0,
   confirmed: 1,
@@ -28,18 +28,18 @@ const STATUS_RANK = {
   pickup_scheduled: 3,
   delivery_partner_assigned: 3,
   delivery_partner_accepted: 3,
-  picked_up: 3,
+  picked_up: 5,
   shipped: 4,
-  in_transit: 5,
-  out_for_delivery: 6,
-  nearing_destination: 6,
-  delivered: 7,
+  in_transit: 6,
+  out_for_delivery: 7,
+  nearing_destination: 7,
+  delivered: 8,
   cancelled: -1,
   rejected: -1,
 };
 
-// Canonical 7 Milestones as required by the order status specification:
-// Order Confirmed -> Processing -> Packed -> Shipped -> In Transit -> Out for Delivery -> Delivered
+// Canonical 8 Milestones as required by the order status specification:
+// Order Confirmed -> Processing -> Packed -> Shipped -> Picked Up -> In Transit -> Out for Delivery -> Delivered
 const STANDARD_MILESTONES = [
   {
     key: 'confirmed',
@@ -70,25 +70,32 @@ const STANDARD_MILESTONES = [
     rank: 4,
   },
   {
+    key: 'picked_up',
+    status: 'Picked Up',
+    title: 'PICKED UP',
+    description: 'Package collected by rider from the seller.',
+    rank: 5,
+  },
+  {
     key: 'in_transit',
     status: 'In Transit',
     title: 'IN TRANSIT',
     description: 'Package is in transit towards delivery hub.',
-    rank: 5,
+    rank: 6,
   },
   {
     key: 'out_for_delivery',
     status: 'Out for Delivery',
     title: 'OUT FOR DELIVERY',
     description: 'Rider is on the way to delivery address.',
-    rank: 6,
+    rank: 7,
   },
   {
     key: 'delivered',
     status: 'Delivered',
     title: 'DELIVERED',
     description: 'Handed over securely with customer OTP verification.',
-    rank: 7,
+    rank: 8,
   },
 ];
 
@@ -107,21 +114,25 @@ function formatTime(date) {
  * Build 7-milestone tracking timeline with accurate timestamps and completion flags
  */
 function buildTrackingTimeline(order, currentStatusNorm, partnerName = '') {
-  const currentRank = STATUS_RANK[currentStatusNorm] || 1;
+  // Use !== undefined check so rank 0 (pending) is correctly handled and NOT treated as "1"
+  const currentRank = STATUS_RANK[currentStatusNorm] !== undefined ? STATUS_RANK[currentStatusNorm] : 0;
 
   // Determine timestamps for each milestone
   const milestoneTimes = {
-    confirmed: order.acceptedAt || order.createdAt ? formatTime(order.acceptedAt || order.createdAt) : 'Just now',
+    confirmed: order.acceptedAt ? formatTime(order.acceptedAt) : currentRank >= 1 ? 'Confirmed' : 'Pending',
     processing: order.preparingAt ? formatTime(order.preparingAt) : currentRank >= 2 ? 'In Progress' : 'Pending',
     packed: order.readyForPickupAt || order.packedAt ? formatTime(order.readyForPickupAt || order.packedAt) : currentRank >= 3 ? 'Packed' : 'Pending',
     shipped: order.shippedAt ? formatTime(order.shippedAt) : currentRank >= 4 ? 'Shipped' : 'Pending',
-    in_transit: order.inTransitAt ? formatTime(order.inTransitAt) : currentRank >= 5 ? 'In Transit' : 'Pending',
-    out_for_delivery: order.outForDeliveryAt ? formatTime(order.outForDeliveryAt) : currentRank >= 6 ? 'On the Way' : 'Pending',
-    delivered: order.deliveredAt ? formatTime(order.deliveredAt) : currentRank >= 7 ? 'Completed' : 'Pending',
+    picked_up: order.pickedUpAt ? formatTime(order.pickedUpAt) : currentRank >= 5 ? 'Picked Up' : 'Pending',
+    in_transit: order.inTransitAt ? formatTime(order.inTransitAt) : currentRank >= 6 ? 'In Transit' : 'Pending',
+    out_for_delivery: order.outForDeliveryAt ? formatTime(order.outForDeliveryAt) : currentRank >= 7 ? 'On the Way' : 'Pending',
+    delivered: order.deliveredAt ? formatTime(order.deliveredAt) : currentRank >= 8 ? 'Completed' : 'Pending',
   };
 
   return STANDARD_MILESTONES.map((m) => {
-    const completed = currentRank >= m.rank;
+    // A milestone is completed only if currentRank is >= its rank AND currentRank is at least 1
+    // This prevents pending orders (rank 0) from showing any milestone as completed
+    const completed = currentRank >= 1 && currentRank >= m.rank;
     const isCurrent = currentRank === m.rank;
     let desc = m.description;
     if (m.key === 'shipped' && partnerName) {
@@ -192,7 +203,7 @@ async function syncParentOrderStatus(orderOrId) {
     ]);
 
     // Derive overall status from sub-orders and delivery
-    let derivedStatus = 'confirmed';
+    let derivedStatus = 'pending';
     if (subOrders.length > 0) {
       const allCancelled = subOrders.every((so) => ['cancelled', 'rejected'].includes((so.status || '').toLowerCase()));
       const allDelivered = subOrders.every((so) => (so.status || '').toLowerCase() === 'delivered');
@@ -212,43 +223,52 @@ async function syncParentOrderStatus(orderOrId) {
         }
 
         // Find highest progression milestone
-        let maxRank = 1;
-        let bestStatus = 'confirmed';
+        let maxRank = 0;
+        let bestStatus = 'pending';
 
         for (const s of activeStatuses) {
-          const rank = STATUS_RANK[s] || 1;
+          const rank = STATUS_RANK[s] !== undefined ? STATUS_RANK[s] : 0;
           if (rank > maxRank) {
             maxRank = rank;
             bestStatus = s;
           }
         }
 
-        // Canonical status mapping
-        if (maxRank >= 7) derivedStatus = 'delivered';
-        else if (maxRank >= 6) derivedStatus = 'out_for_delivery';
-        else if (maxRank >= 5) derivedStatus = 'in_transit';
+        // Canonical status mapping — pending (rank 0) stays pending
+        if (maxRank >= 8) derivedStatus = 'delivered';
+        else if (maxRank >= 7) derivedStatus = 'out_for_delivery';
+        else if (maxRank >= 6) derivedStatus = 'in_transit';
+        else if (maxRank >= 5) derivedStatus = 'picked_up';
         else if (maxRank >= 4) derivedStatus = 'shipped';
         else if (maxRank >= 3) derivedStatus = 'packed';
         else if (maxRank >= 2) derivedStatus = 'processing';
-        else derivedStatus = 'confirmed';
+        else if (maxRank >= 1) derivedStatus = 'confirmed';
+        else derivedStatus = 'pending';
       }
     } else if (delivery?.status) {
       const dStat = delivery.status.toLowerCase();
-      const r = STATUS_RANK[dStat] || 1;
-      if (r >= 7) derivedStatus = 'delivered';
-      else if (r >= 6) derivedStatus = 'out_for_delivery';
-      else if (r >= 5) derivedStatus = 'in_transit';
+      const r = STATUS_RANK[dStat] !== undefined ? STATUS_RANK[dStat] : 0;
+      if (r >= 8) derivedStatus = 'delivered';
+      else if (r >= 7) derivedStatus = 'out_for_delivery';
+      else if (r >= 6) derivedStatus = 'in_transit';
+      else if (r >= 5) derivedStatus = 'picked_up';
       else if (r >= 4) derivedStatus = 'shipped';
       else if (r >= 3) derivedStatus = 'packed';
       else if (r >= 2) derivedStatus = 'processing';
-      else derivedStatus = 'confirmed';
+      else if (r >= 1) derivedStatus = 'confirmed';
+      else derivedStatus = 'pending';
+    } else {
+      // No sub-orders and no delivery — preserve current parent status if valid, else keep pending
+      const currentNorm = (parentOrder.orderStatus || '').toLowerCase();
+      const currentRankVal = STATUS_RANK[currentNorm] !== undefined ? STATUS_RANK[currentNorm] : 0;
+      derivedStatus = currentRankVal > 0 ? currentNorm : 'pending';
     }
 
     parentOrder.orderStatus = derivedStatus;
 
     // Collect newest timestamps from sub-orders / delivery
     const now = new Date();
-    const rank = STATUS_RANK[derivedStatus] || 1;
+    const rank = STATUS_RANK[derivedStatus] !== undefined ? STATUS_RANK[derivedStatus] : 0;
 
     for (const so of subOrders) {
       if (so.acceptedAt && !parentOrder.acceptedAt) parentOrder.acceptedAt = so.acceptedAt;
@@ -263,29 +283,37 @@ async function syncParentOrderStatus(orderOrId) {
     if (delivery?.pickupVerifiedAt && !parentOrder.pickedUpAt) parentOrder.pickedUpAt = delivery.pickupVerifiedAt;
     if (delivery?.deliveredAt && !parentOrder.deliveredAt) parentOrder.deliveredAt = delivery.deliveredAt;
 
-    // Set timestamps corresponding to current progression rank if missing
-    if (rank >= 1 && !parentOrder.acceptedAt) parentOrder.acceptedAt = parentOrder.createdAt || now;
+    // Set timestamps corresponding to current progression rank ONLY if sub-orders / delivery explicitly pushed us there
+    // Do NOT auto-set timestamps for pending orders (rank 0) or prematurely assign future timestamps
+    if (rank >= 1 && !parentOrder.acceptedAt && subOrders.some((so) => so.acceptedAt)) parentOrder.acceptedAt = now;
     if (rank >= 2 && !parentOrder.preparingAt) parentOrder.preparingAt = now;
     if (rank >= 3 && !parentOrder.readyForPickupAt) parentOrder.readyForPickupAt = now;
     if (rank >= 4 && !parentOrder.shippedAt) parentOrder.shippedAt = now;
-    if (rank >= 5 && !parentOrder.inTransitAt) parentOrder.inTransitAt = now;
-    if (rank >= 6 && !parentOrder.outForDeliveryAt) parentOrder.outForDeliveryAt = now;
-    if (rank >= 7) {
+    if (rank >= 5 && !parentOrder.pickedUpAt) parentOrder.pickedUpAt = now;
+    if (rank >= 6 && !parentOrder.inTransitAt) parentOrder.inTransitAt = now;
+    if (rank >= 7 && !parentOrder.outForDeliveryAt) parentOrder.outForDeliveryAt = now;
+    if (rank >= 8) {
       if (!parentOrder.deliveredAt) parentOrder.deliveredAt = now;
       parentOrder.paymentStatus = 'Completed';
     }
 
-    // Sync delivery partner info from sub-order or delivery document
+    // Sync delivery partner info ONLY when order is at packed stage or beyond (rank >= 3)
+    // Clear delivery partner fields for pending/confirmed/processing orders
     const activeSubOrderWithPartner = subOrders.find((so) => so.deliveryPartner || so.deliveryPartnerName);
     const partnerDoc = delivery?.deliveryPartner;
 
-    if (partnerDoc || activeSubOrderWithPartner) {
+    if (rank >= 3 && (partnerDoc || activeSubOrderWithPartner)) {
       parentOrder.deliveryPartner = partnerDoc?._id || activeSubOrderWithPartner?.deliveryPartner || parentOrder.deliveryPartner;
       parentOrder.deliveryPartnerName = partnerDoc?.name || activeSubOrderWithPartner?.deliveryPartnerName || parentOrder.deliveryPartnerName;
       parentOrder.deliveryPartnerPhone = partnerDoc?.phone || activeSubOrderWithPartner?.deliveryPartnerPhone || parentOrder.deliveryPartnerPhone;
       parentOrder.deliveryPartnerVehicle =
         partnerDoc?.vehicleNumber || partnerDoc?.vehicleType || activeSubOrderWithPartner?.deliveryPartnerVehicleNumber || activeSubOrderWithPartner?.deliveryPartnerVehicleType || parentOrder.deliveryPartnerVehicle || 'Bike';
       parentOrder.courierPartner = `${parentOrder.deliveryPartnerName} (${parentOrder.deliveryPartnerVehicle || 'Delivery Partner'})`;
+    } else if (rank < 3) {
+      // Clear any stale delivery partner data for early-stage orders
+      parentOrder.deliveryPartner = parentOrder.deliveryPartner || null;
+      parentOrder.deliveryPartnerName = parentOrder.deliveryPartnerName || '';
+      parentOrder.deliveryPartnerPhone = parentOrder.deliveryPartnerPhone || '';
     }
 
     // Sync tracking numbers

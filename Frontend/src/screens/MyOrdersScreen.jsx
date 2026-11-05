@@ -75,24 +75,27 @@ export const MyOrdersScreen = ({ navigation }) => {
     let socketUnsub = null;
     const connectSocketListener = async () => {
       try {
-        await socketService.connect();
-        const socket = socketService.getSocket();
+        const socket = await socketService.connect();
         if (socket) {
           const handleStatusChange = () => {
             loadOrders();
           };
           socket.on('order:status_updated', handleStatusChange);
-          socket.on('delivery:status_update', handleStatusChange);
+          socket.on('customer:order_status_updated', handleStatusChange);
+          socket.on('delivery:status_updated', handleStatusChange);
           socket.on('delivery:partner_assigned', handleStatusChange);
 
           socketUnsub = () => {
-            socket.off('order:status_updated', handleStatusChange);
-            socket.off('delivery:status_update', handleStatusChange);
-            socket.off('delivery:partner_assigned', handleStatusChange);
+            if (socket && typeof socket.off === 'function') {
+              socket.off('order:status_updated', handleStatusChange);
+              socket.off('customer:order_status_updated', handleStatusChange);
+              socket.off('delivery:status_updated', handleStatusChange);
+              socket.off('delivery:partner_assigned', handleStatusChange);
+            }
           };
         }
       } catch (e) {
-        console.warn('[MyOrdersScreen] Socket listen error:', e);
+        console.warn('[MyOrdersScreen] Socket listen error:', e?.message || e);
       }
     };
 

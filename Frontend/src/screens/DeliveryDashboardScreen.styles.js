@@ -4,7 +4,7 @@ import { Colors } from '../constants/colors';
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
   },
   header: {
     flexDirection: 'row',
@@ -13,8 +13,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-    backgroundColor: '#0F172A',
+    borderBottomColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
   },
   riderInfo: {
     flexDirection: 'row',
@@ -32,11 +32,11 @@ export const styles = StyleSheet.create({
   riderName: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#F8FAFC',
+    color: '#0F172A',
   },
   riderSub: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: '#475569',
     marginTop: 2,
   },
   dutyBadge: {
@@ -63,12 +63,12 @@ export const styles = StyleSheet.create({
 
   // Earnings Card
   earningsCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
   },
   earningsHeader: {
     flexDirection: 'row',
@@ -79,7 +79,7 @@ export const styles = StyleSheet.create({
   earningsTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#94A3B8',
+    color: '#475569',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -100,22 +100,22 @@ export const styles = StyleSheet.create({
   },
   earningItem: {
     width: '31%',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
   },
   earningAmount: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#F8FAFC',
+    color: '#0F172A',
     marginTop: 4,
   },
   earningLabel: {
     fontSize: 10,
-    color: '#94A3B8',
+    color: '#475569',
     marginTop: 2,
     textAlign: 'center',
   },
@@ -130,7 +130,7 @@ export const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#F8FAFC',
+    color: '#0F172A',
   },
   taskBadge: {
     backgroundColor: '#38BDF8',
@@ -146,12 +146,12 @@ export const styles = StyleSheet.create({
 
   // Task Card
   taskCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
   },
   taskCardHeader: {
     flexDirection: 'row',
@@ -186,7 +186,7 @@ export const styles = StyleSheet.create({
   taskCustomerName: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#F8FAFC',
+    color: '#0F172A',
   },
   callBtn: {
     flexDirection: 'row',
@@ -210,7 +210,7 @@ export const styles = StyleSheet.create({
   },
   taskAddressText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#475569',
     flex: 1,
     lineHeight: 17,
   },
@@ -218,14 +218,14 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
   },
   taskCodLabel: {
     fontSize: 12,
-    color: '#CBD5E1',
+    color: '#475569',
     fontWeight: '600',
   },
   taskCodAmount: {
@@ -257,31 +257,31 @@ export const styles = StyleSheet.create({
   },
   modalBox: {
     width: '100%',
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#F8FAFC',
+    color: '#0F172A',
     textAlign: 'center',
     marginBottom: 6,
   },
   modalSubtitle: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#475569',
     textAlign: 'center',
     marginBottom: 20,
   },
   otpInput: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#0D9488',
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontSize: 24,
     fontWeight: '900',
     textAlign: 'center',
@@ -352,7 +352,7 @@ export const styles = StyleSheet.create({
   },
   riderDetailsList: {
     width: '100%',
-    backgroundColor: '#0A192F',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 12,
     gap: 6,
@@ -370,7 +370,7 @@ export const styles = StyleSheet.create({
   },
   riderDetailVal: {
     fontSize: 12,
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontWeight: '700',
   },
   checkStatusBtn: {
@@ -393,8 +393,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#064E3B',
-    borderColor: '#059669',
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -409,12 +409,12 @@ export const styles = StyleSheet.create({
     marginRight: 6,
   },
   gpsBannerText: {
-    color: '#A7F3D0',
+    color: '#065F46',
     fontSize: 12,
     fontWeight: '700',
   },
   gpsPingText: {
-    color: '#6EE7B7',
+    color: '#047857',
     fontSize: 11,
     fontWeight: '600',
   },

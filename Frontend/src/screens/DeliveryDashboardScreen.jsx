@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,8 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
   const isApproved = kycStatus === 'approved';
   const isPending = kycStatus === 'pending' || kycStatus === 'under_review';
   const isRejected = kycStatus === 'rejected';
+
+  const isDeliveryUser = user?.role === 'delivery' || user?.role === 'rider' || user?.isDelivery === true;
 
   const [isOnline, setIsOnline] = useState(isApproved && user?.availability === 'online');
   const [tasks, setTasks] = useState([]);
@@ -73,7 +75,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
       locationService.stopLocationTracking();
       setIsGpsTransmitting(false);
     }
-  }, [isApproved, isOnline, activeTask?._id, activeTask?.status]);
+  }, [isApproved, isOnline, activeTask]);
 
   // 2. Subscribe to location updates for live ping time indicator
   useEffect(() => {
@@ -101,12 +103,13 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
     };
   }, []);
 
-  useEffect(() => {
-    loadAllFleetData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.kycStatus]);
+  const loadAllFleetData = useCallback(async () => {
+    if (!isDeliveryUser || !user) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
-  const loadAllFleetData = async () => {
     try {
       await refreshProfile().catch(() => {});
       if (isApproved) {
@@ -123,7 +126,15 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [isApproved, isDeliveryUser, refreshProfile, user]);
+
+  useEffect(() => {
+    if (!isDeliveryUser || !user) {
+      setLoading(false);
+      return;
+    }
+    loadAllFleetData();
+  }, [loadAllFleetData, isDeliveryUser, user]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -316,9 +327,18 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
   const city = user?.city || 'Delhi NCR';
   const earnings = user?.earnings || { available: 1450, pending: 680, totalEarned: 18200 };
 
+  if (!user && !isDeliveryUser) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <Loading message="Loading rider session..." fullScreen />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* Rider Header Bar */}
       <View
@@ -616,26 +636,45 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                   )}
 
                   {/* Customer Drop Location Info */}
-                  <View style={styles.taskCustomerRow}>
-                    <Text style={styles.taskCustomerName}>
-                      👤 {task.customerName || task.deliveryAddress?.fullName || 'Priya Sharma'}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.callBtn}
-                      activeOpacity={0.8}
-                      onPress={() => handleCallCustomer(task.customerPhone || task.deliveryAddress?.mobileNumber || '9876543210')}>
-                      <AppIcon name="call" size={13} color="#FFFFFF" />
-                      <Text style={styles.callBtnText}>Call Customer</Text>
-                    </TouchableOpacity>
-                  </View>
+<View style={styles.taskCustomerRow}>
+  <Text style={styles.taskCustomerName}>
+    👤 {
+      typeof task.customerName === 'string'
+        ? task.customerName
+        : typeof task.deliveryAddress?.fullName === 'string'
+          ? task.deliveryAddress.fullName
+          : 'Customer'
+    }
+  </Text>
 
-                  <View style={styles.taskAddressRow}>
-                    <AppIcon name="location-outline" size={16} color="#94A3B8" />
-                    <Text style={styles.taskAddressText}>
-                      {task.deliveryAddress?.addressLine1 || task.deliveryAddress?.addressLine || task.deliveryAddress || 'Sector 14, Near Metro Station, Rohini, New Delhi - 110085'}
-                    </Text>
-                  </View>
+  <TouchableOpacity
+    style={styles.callBtn}
+    activeOpacity={0.8}
+    onPress={() =>
+      handleCallCustomer(
+        task.customerPhone ||
+        task.deliveryAddress?.mobileNumber
+      )
+    }>
+    <AppIcon name="call" size={13} color="#FFFFFF" />
+    <Text style={styles.callBtnText}>Call Customer</Text>
+  </TouchableOpacity>
+</View>
 
+                <View style={styles.taskAddressRow}>
+  <AppIcon name="location-outline" size={16} color="#94A3B8" />
+  <Text style={styles.taskAddressText}>
+    {[
+      task.deliveryAddress?.addressLine1,
+      task.deliveryAddress?.addressLine,
+      task.deliveryAddress?.city,
+      task.deliveryAddress?.state,
+      task.deliveryAddress?.pinCode,
+    ]
+      .filter(Boolean)
+      .join(', ') || 'Address not available'}
+  </Text>
+</View>
                   {/* Turn-by-Turn Navigation to Customer (during delivery phase) */}
                   {isDropPhase && (
                     <View style={styles.taskNavigationRow}>
