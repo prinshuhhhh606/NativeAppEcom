@@ -149,27 +149,47 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   const targetStatus = (status || '').toLowerCase().trim();
 
+  // Strict Role-Based Security: Sellers must NOT update delivery-stage statuses
+  const restrictedDeliveryStatuses = ['out_for_delivery', 'delivered', 'picked_up', 'delivery_completed'];
+  if (restrictedDeliveryStatuses.includes(targetStatus)) {
+    return errorResponse(
+      res,
+      `Sellers are not permitted to mark orders as '${targetStatus.replace(/_/g, ' ')}'. Delivery progress is managed exclusively by the assigned Delivery Partner via the Delivery Panel.`,
+      403
+    );
+  }
+
+  // Prevent seller from altering order status if order has already been handed over to delivery partner
+  if (order.deliveryPartner && ['picked_up', 'out_for_delivery', 'delivered'].includes(order.status)) {
+    return errorResponse(
+      res,
+      `Order #${order.subOrderNumber} has been handed over to Delivery Partner (${order.deliveryPartnerName || 'Assigned Rider'}). Delivery progress is managed by the Delivery Panel.`,
+      403
+    );
+  }
+
+  // Seller workflow is strictly restricted up to 'in_transit'
   const allowedTransitions = {
     new: ['accepted', 'confirmed', 'processing', 'preparing', 'cancelled', 'rejected'],
     pending: ['accepted', 'confirmed', 'processing', 'preparing', 'cancelled', 'rejected'],
     placed: ['accepted', 'confirmed', 'processing', 'preparing', 'cancelled', 'rejected'],
-    confirmed: ['accepted', 'processing', 'preparing', 'packing', 'packed', 'ready_to_ship', 'ready_for_pickup', 'cancelled', 'rejected'],
-    accepted: ['processing', 'preparing', 'packing', 'packed', 'ready_to_ship', 'ready_for_pickup', 'cancelled', 'rejected'],
-    processing: ['preparing', 'processing_completed', 'packing', 'packed', 'ready_to_ship', 'ready_for_pickup', 'cancelled'],
-    preparing: ['processing_completed', 'packed', 'ready_to_ship', 'ready_for_pickup', 'cancelled'],
-    processing_completed: ['packed', 'ready_to_ship', 'ready_for_pickup', 'pickup_scheduled', 'cancelled'],
-    packing: ['packed', 'ready_to_ship', 'ready_for_pickup', 'pickup_scheduled', 'cancelled'],
-    packed: ['ready_to_ship', 'ready_for_pickup', 'pickup_scheduled', 'shipped', 'cancelled'],
-    ready_to_ship: ['ready_for_pickup', 'pickup_scheduled', 'shipped', 'cancelled'],
-    ready_for_pickup: ['pickup_scheduled', 'shipped', 'out_for_delivery', 'cancelled'],
-    pickup_scheduled: ['shipped', 'picked_up', 'out_for_delivery', 'cancelled'],
-    picked_up: ['in_transit', 'out_for_delivery', 'delivered'],
-    shipped: ['in_transit', 'out_for_delivery', 'ndr', 'delivered'],
-    in_transit: ['out_for_delivery', 'ndr', 'delivered'],
-    out_for_delivery: ['delivered', 'ndr'],
-    ndr: ['rto', 'out_for_delivery'],
+    confirmed: ['accepted', 'processing', 'preparing', 'packing', 'packed', 'cancelled', 'rejected'],
+    accepted: ['processing', 'preparing', 'packing', 'packed', 'cancelled', 'rejected'],
+    processing: ['preparing', 'processing_completed', 'packing', 'packed', 'cancelled'],
+    preparing: ['processing_completed', 'packed', 'cancelled'],
+    processing_completed: ['packed', 'cancelled'],
+    packing: ['packed', 'cancelled'],
+    packed: ['ready_to_ship', 'shipped', 'in_transit', 'cancelled'],
+    ready_to_ship: ['shipped', 'in_transit', 'cancelled'],
+    ready_for_pickup: ['shipped', 'in_transit', 'cancelled'],
+    pickup_scheduled: ['shipped', 'in_transit', 'cancelled'],
+    shipped: ['in_transit', 'cancelled'],
+    in_transit: [], // Terminal stage for Seller. Next step is assigning a Delivery Partner
+    picked_up: [], // Controlled by Delivery Partner
+    out_for_delivery: [], // Controlled by Delivery Partner
+    delivered: [], // Controlled by Delivery Partner
+    ndr: [],
     rto: [],
-    delivered: ['return_requested'],
     return_requested: ['return_approved', 'return_rejected'],
     return_approved: ['return_pickup'],
     return_rejected: [],
@@ -187,7 +207,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   if (!validNextStatuses.includes(targetStatus)) {
     return errorResponse(
       res,
-      `Cannot transition order from '${currentStatus}' to '${targetStatus}'. Allowed next steps: ${validNextStatuses.join(', ')}`,
+      `Cannot transition order from '${currentStatus}' to '${targetStatus}'. Allowed next steps for Seller: ${validNextStatuses.length > 0 ? validNextStatuses.join(', ') : 'None (Assign Delivery Partner)'}`,
       400
     );
   }
@@ -212,10 +232,15 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   if (targetStatus === 'accepted') {
     order.acceptedAt = new Date();
-  } else if (targetStatus === 'preparing') {
+  } else if (targetStatus === 'preparing' || targetStatus === 'processing') {
     order.preparingAt = new Date();
+  } else if (targetStatus === 'packed') {
+    order.packedAt = new Date();
   } else if (targetStatus === 'ready_for_pickup') {
     order.readyForPickupAt = new Date();
+  } else if (targetStatus === 'in_transit' || targetStatus === 'shipped') {
+    order.inTransitAt = new Date();
+    order.shippedAt = new Date();
   }
 
   order.status = targetStatus;
@@ -228,21 +253,17 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   if (trackingNumber) order.shipping.trackingNumber = trackingNumber.trim();
   if (awbNumber) order.shipping.awbNumber = awbNumber.trim();
 
-  if (['ready_to_ship', 'ready_for_pickup', 'pickup_scheduled', 'shipped'].includes(targetStatus)) {
+  if (['ready_to_ship', 'ready_for_pickup', 'pickup_scheduled', 'shipped', 'in_transit'].includes(targetStatus)) {
     if (!order.shipping.trackingNumber) {
       order.shipping.trackingNumber = 'BBIN-' + Math.floor(100000000 + Math.random() * 900000000);
     }
     if (!order.shipping.awbNumber) {
       order.shipping.awbNumber = 'AWB' + Math.floor(1000000000 + Math.random() * 9000000000);
     }
-    if (targetStatus === 'shipped') {
-      order.shipping.shippedAt = new Date();
+    if (targetStatus === 'shipped' || targetStatus === 'in_transit') {
+      order.shipping.shippedAt = order.shipping.shippedAt || new Date();
+      order.shipping.inTransitAt = new Date();
     }
-  }
-
-  if (targetStatus === 'delivered') {
-    order.shipping.deliveredAt = new Date();
-    order.paymentStatus = 'Completed';
   }
 
   // Record tracking timeline step

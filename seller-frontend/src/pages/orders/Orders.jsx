@@ -46,6 +46,7 @@ import OrderCommunicationModal from '../../components/orders/OrderCommunicationM
 import BulkInvoiceModal from '../../components/orders/BulkInvoiceModal';
 import ShippingLabelModal from '../../components/orders/ShippingLabelModal';
 import OrderInvoiceModal from '../../components/orders/OrderInvoiceModal';
+import AssignDeliveryModal from '../../components/orders/AssignDeliveryModal';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -130,6 +131,10 @@ export const Orders = ({ initialMode = 'orders' }) => {
 
   // Customer Messaging Modal State
   const [communicationOrder, setCommunicationOrder] = useState(null);
+
+  // Delivery Partner Assignment State
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignOrder, setAssignOrder] = useState(null);
 
   // 1. Fetch Orders from Backend
   const fetchOrders = async () => {
@@ -878,6 +883,18 @@ export const Orders = ({ initialMode = 'orders' }) => {
                         >
                           <Tag className="w-4 h-4 text-purple-600" />
                         </button>
+                        {['in_transit', 'packed', 'shipped'].includes(order.status) && !order.deliveryPartner && (
+                          <button
+                            onClick={() => {
+                              setAssignOrder(order);
+                              setAssignModalOpen(true);
+                            }}
+                            className="p-2.5 rounded-2xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 text-teal-700 dark:text-teal-300 transition-colors"
+                            title="Assign Delivery Partner"
+                          >
+                            <Bike className="w-4 h-4 text-teal-600" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1543,10 +1560,52 @@ export const Orders = ({ initialMode = 'orders' }) => {
               </div>
             </div>
 
+            {/* Assigned Delivery Partner Details Card */}
+            {selectedOrder.deliveryPartner && (
+              <div className="p-4 bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-2xl border border-teal-200 dark:border-teal-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black shadow-md shadow-teal-600/20">
+                      <Bike className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-gray-900 dark:text-white">
+                          {selectedOrder.deliveryPartner.name || 'Assigned Delivery Partner'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                          Handed Over
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                        <span>📞 {selectedOrder.deliveryPartner.phone || 'N/A'}</span>
+                        {selectedOrder.deliveryPartner.vehicleNumber && (
+                          <span>• 🛵 {selectedOrder.deliveryPartner.vehicleNumber}</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-gray-400 block uppercase">Delivery Status</span>
+                    <span className="text-xs font-black text-teal-700 dark:text-teal-400 capitalize">
+                      {selectedOrder.status?.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-teal-100 dark:border-teal-900/40 text-xs text-teal-900 dark:text-teal-200 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span>
+                    Order handed over to Delivery Partner. Delivery progress (Picked Up, Out for Delivery, Delivered) is managed exclusively by the Delivery Partner via the Delivery App.
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Order Lifecycle Action Workflow Buttons */}
             <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                {/* Accept Order Action */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* 1. Accept Order Action */}
                 {['new', 'pending'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
@@ -1558,8 +1617,8 @@ export const Orders = ({ initialMode = 'orders' }) => {
                   </button>
                 )}
 
-                {/* Start Processing Action */}
-                {['accepted', 'confirmed', 'new', 'pending'].includes(selectedOrder.status) && (
+                {/* 2. Start Processing Action */}
+                {['accepted', 'confirmed'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
                     onClick={() => handleUpdateStatus(selectedOrder._id, 'processing')}
@@ -1570,8 +1629,8 @@ export const Orders = ({ initialMode = 'orders' }) => {
                   </button>
                 )}
 
-                {/* Mark as Packed Action */}
-                {['processing', 'preparing', 'accepted'].includes(selectedOrder.status) && (
+                {/* 3. Mark as Packed Action */}
+                {['processing', 'preparing'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
                     onClick={() => handleUpdateStatus(selectedOrder._id, 'packed')}
@@ -1582,32 +1641,8 @@ export const Orders = ({ initialMode = 'orders' }) => {
                   </button>
                 )}
 
-                {/* Move to Ready to Ship Action */}
-                {['packed', 'packing'].includes(selectedOrder.status) && (
-                  <button
-                    disabled={updating}
-                    onClick={() => openShippingModal(selectedOrder)}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-600/20 transition-all flex items-center gap-1.5"
-                  >
-                    <Truck className="w-4 h-4" />
-                    <span>Ready to Ship & Dispatch</span>
-                  </button>
-                )}
-
-                {/* Handover to Courier (Shipped) */}
-                {['packed', 'packing', 'ready_to_ship', 'pickup_scheduled', 'ready_for_pickup'].includes(selectedOrder.status) && (
-                  <button
-                    disabled={updating}
-                    onClick={() => handleUpdateStatus(selectedOrder._id, 'shipped')}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
-                  >
-                    <Truck className="w-4 h-4" />
-                    <span>Ship Order (Handover to Courier)</span>
-                  </button>
-                )}
-
-                {/* Move to In Transit Action */}
-                {['shipped'].includes(selectedOrder.status) && (
+                {/* 4. Move to In Transit Action */}
+                {['packed', 'packing', 'ready_to_ship'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
                     onClick={() => handleUpdateStatus(selectedOrder._id, 'in_transit')}
@@ -1618,32 +1653,23 @@ export const Orders = ({ initialMode = 'orders' }) => {
                   </button>
                 )}
 
-                {/* Out for Delivery Action */}
-                {['in_transit', 'picked_up'].includes(selectedOrder.status) && (
+                {/* 5. Assign Delivery Partner Action (Seller hands over to Delivery Partner) */}
+                {!selectedOrder.deliveryPartner && ['in_transit', 'packed', 'shipped', 'ready_to_ship', 'pickup_scheduled'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
-                    onClick={() => handleUpdateStatus(selectedOrder._id, 'out_for_delivery')}
+                    onClick={() => {
+                      setAssignOrder(selectedOrder);
+                      setAssignModalOpen(true);
+                    }}
                     className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center gap-1.5"
                   >
                     <Bike className="w-4 h-4" />
-                    <span>Out for Delivery</span>
+                    <span>Assign Delivery Partner</span>
                   </button>
                 )}
 
-                {/* Mark as Delivered Action */}
-                {['out_for_delivery'].includes(selectedOrder.status) && (
-                  <button
-                    disabled={updating}
-                    onClick={() => handleUpdateStatus(selectedOrder._id, 'delivered')}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Mark Delivered</span>
-                  </button>
-                )}
-
-                {/* Rejection / Cancellation Button (allowed before shipped) */}
-                {!['shipped', 'delivered', 'cancelled', 'rejected'].includes(selectedOrder.status) && (
+                {/* Rejection / Cancellation Button (allowed before handed over / in transit) */}
+                {!selectedOrder.deliveryPartner && !['in_transit', 'shipped', 'delivered', 'cancelled', 'rejected'].includes(selectedOrder.status) && (
                   <button
                     disabled={updating}
                     onClick={() => openRejectModal(selectedOrder._id, 'rejected')}
@@ -1971,6 +1997,22 @@ export const Orders = ({ initialMode = 'orders' }) => {
           order={communicationOrder}
         />
       )}
+
+      {/* Assign Delivery Partner Modal */}
+      <AssignDeliveryModal
+        isOpen={assignModalOpen}
+        onClose={() => {
+          setAssignModalOpen(false);
+          setAssignOrder(null);
+        }}
+        order={assignOrder}
+        onAssigned={(updatedOrder) => {
+          if (selectedOrder && (selectedOrder._id === updatedOrder._id || selectedOrder._id === updatedOrder.id)) {
+            setSelectedOrder(updatedOrder);
+          }
+          fetchOrders();
+        }}
+      />
     </div>
   );
 };

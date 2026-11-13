@@ -258,6 +258,39 @@ const assignDeliveryPartner = async (req, res) => {
       specialInstructions: specialInstructions || 'Deliver securely to customer.',
     });
 
+    // Idempotently create Delivery document so the order immediately appears in Delivery Panel
+    let delivery = await Delivery.findOne({
+      $or: [{ assignment: assignment._id }, { orderNumber: orderNum, deliveryPartner: partner._id }],
+    });
+
+    if (!delivery) {
+      const deliveryNumber = `DEL-${Math.floor(100000 + Math.random() * 900000)}`;
+      delivery = await Delivery.create({
+        deliveryNumber,
+        assignment: assignment._id,
+        order: order ? order.order : new (require('mongoose').Types.ObjectId)(),
+        orderNumber: orderNum,
+        seller: sellerId,
+        deliveryPartner: partner._id,
+        status: 'assigned',
+        pickupAddress: assignment.pickupAddress,
+        deliveryAddress: assignment.deliveryAddress,
+        pickupOtp: '7821', // Store pickup OTP for demo
+        deliveryOtp: '4521', // Customer delivery OTP for demo
+        deliveryFee: assignment.deliveryFee,
+        paymentMethod: assignment.paymentMethod,
+        codAmount: assignment.amountToCollect,
+        timeline: [
+          {
+            status: 'assigned',
+            title: 'Delivery Partner Assigned by Seller',
+            notes: `Assigned to ${partner.name} (${partner.phone}). Awaiting pickup.`,
+            timestamp: new Date(),
+          },
+        ],
+      });
+    }
+
     // Atomically Update Seller Sub-Order
     if (order) {
       order.deliveryPartner = partner._id;

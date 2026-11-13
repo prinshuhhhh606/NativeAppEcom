@@ -310,7 +310,7 @@ const acceptRequest = async (req, res) => {
       }
     }
 
-    // Idempotently create Delivery document
+    // Idempotently create or update Delivery document
     let delivery = await Delivery.findOne({ assignment: updatedAssignment._id });
     if (!delivery) {
       const deliveryNumber = `DEL-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -338,6 +338,16 @@ const acceptRequest = async (req, res) => {
           },
         ],
       });
+    } else {
+      delivery.status = 'accepted';
+      delivery.deliveryPartner = partnerId;
+      delivery.timeline.push({
+        status: 'accepted',
+        title: 'Delivery Request Accepted',
+        notes: `${req.deliveryPartner.name} accepted delivery assignment.`,
+        timestamp: new Date(),
+      });
+      await delivery.save();
     }
 
     // Sync partner currentActiveDeliveries with actual active Deliveries
