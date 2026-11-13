@@ -214,7 +214,8 @@ export const Products = () => {
   };
 
   const handleExportCSV = () => {
-    window.open('http://localhost:5000/api/v1/admin/products/export/csv', '_blank');
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/admin';
+    window.open(`${baseUrl}/products/export/csv`, '_blank');
   };
 
   // Open Review & Approval Dialog

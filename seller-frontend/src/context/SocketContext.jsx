@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 const SocketContext = createContext();
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://appecom-backend.onrender.com';
 
 export const SocketProvider = ({ children }) => {
   const { seller, isAuthenticated } = useAuth();

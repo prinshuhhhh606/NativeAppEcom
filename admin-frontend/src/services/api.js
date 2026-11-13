@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1/admin',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/admin',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -32,7 +32,7 @@ api.interceptors.response.use(
 
       if (refreshToken) {
         try {
-          const refreshBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1/admin';
+          const refreshBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/admin';
           const res = await axios.post(`${refreshBaseUrl}/auth/refresh-token`, {
             refreshToken,
           });
@@ -67,7 +67,7 @@ api.interceptors.response.use(
       error.response?.data?.message ||
       error.response?.data?.error ||
       (Array.isArray(error.response?.data?.errors) ? error.response.data.errors[0] : null) ||
-      (!error.response ? 'Cannot connect to backend server. Make sure the server is online at http://localhost:5000.' : null) ||
+      (!error.response ? 'Cannot connect to backend server. Make sure the server is online at https://appecom-backend.onrender.com.' : null) ||
       error.message ||
       'An unexpected error occurred. Please try again.';
 

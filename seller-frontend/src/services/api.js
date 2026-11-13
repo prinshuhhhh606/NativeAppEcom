@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1/seller';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/seller';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

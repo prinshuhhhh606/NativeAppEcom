@@ -29,7 +29,8 @@ export const Reports = () => {
   };
 
   const handleExport = (type) => {
-    let url = `http://localhost:5000/api/v1/admin/reports/export-csv?type=${type}`;
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/admin';
+    let url = `${baseUrl}/reports/export-csv?type=${type}`;
     if (startDate) url += `&startDate=${startDate}`;
     if (endDate) url += `&endDate=${endDate}`;
     window.open(url, '_blank');

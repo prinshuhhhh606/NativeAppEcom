@@ -118,7 +118,7 @@ export const Customers = () => {
     try {
       setExporting(true);
       const token = localStorage.getItem('appecom_admin_token');
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1/admin';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://appecom-backend.onrender.com/api/v1/admin';
       const response = await fetch(`${baseUrl}/customers/export/csv`, {
         headers: {
           Authorization: `Bearer ${token}`,

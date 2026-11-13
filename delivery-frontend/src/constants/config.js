@@ -5,11 +5,11 @@ export const Config = {
   APP_SUBTITLE: 'Pan-India Logistics Partner Fleet',
   VERSION: '2.4.0',
 
-  // API Candidate Endpoints (USB ADB Reverse + LAN IP + Production)
-  API_BASE_URL: 'http://127.0.0.1:5000/api/v1/delivery',
-  SOCKET_URL: 'http://127.0.0.1:5000',
+  // Production API & Real-Time Socket Endpoints
+  API_BASE_URL: 'https://appecom-backend.onrender.com/api/v1/delivery',
+  SOCKET_URL: 'https://appecom-backend.onrender.com',
   LAN_URL: 'http://192.168.1.16:5000/api/v1/delivery',
-  PROD_URL: 'https://appsica-backend.onrender.com/api/v1/delivery',
+  PROD_URL: 'https://appecom-backend.onrender.com/api/v1/delivery',
 
   CURRENCY: '₹',
   COUNTRY: 'India',

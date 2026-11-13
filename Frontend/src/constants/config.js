@@ -11,7 +11,7 @@ const CURRENT_LAN_IP = '10.139.94.95';
 
 // Production Render Backend
 const PRODUCTION_API_URL =
-  'https://appsica-backend.onrender.com/api';
+  'https://appecom-backend.onrender.com/api';
 
 /**
  * Resolve API URL
@@ -90,6 +90,7 @@ const resolveCandidateUrls = () => {
   const primary = resolvePrimaryApiUrl();
 
   const pool = [
+    PRODUCTION_API_URL,
     primary,
     `http://localhost:${PORT}/api`,
     `http://10.0.2.2:${PORT}/api`,
