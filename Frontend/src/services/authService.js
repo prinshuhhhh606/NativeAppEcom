@@ -242,13 +242,43 @@ export const authService = {
   async getCurrentProfile(role = 'customer') {
     try {
       let endpoint = '/auth/me';
-      if (role === 'admin') endpoint = '/admin/auth/me';
-      else if (role === 'seller') endpoint = '/seller/auth/profile';
-      else if (role === 'delivery') endpoint = '/delivery/profile';
+
+      if (role === 'admin') {
+        endpoint = '/admin/auth/me';
+      } else if (role === 'seller') {
+        endpoint = '/seller/auth/profile';
+      } else if (role === 'delivery') {
+        endpoint = '/delivery/profile';
+      }
 
       const response = await api.get(endpoint);
-      return response.data || response;
+      const responseData = response.data || response;
+      const data = responseData.data || responseData;
+
+      if (role === 'seller') {
+        return {
+          ...data,
+          seller: data.seller || responseData.seller,
+        };
+      }
+
+      if (role === 'delivery') {
+        const rawPartner = data.partner || responseData.partner || data.user || data;
+        const normalizedPartner = {
+          ...rawPartner,
+          role: 'delivery',
+          isDelivery: true,
+        };
+        return {
+          ...data,
+          partner: normalizedPartner,
+          user: normalizedPartner,
+        };
+      }
+
+      return data;
     } catch (error) {
+      console.warn('[AuthService] Profile refresh failed:', error.message);
       return null;
     }
   },
@@ -297,45 +327,62 @@ export const authService = {
   /**
    * Seller Login with Role Verification
    */
-  async sellerLogin({ email, password, remember = true }) {
-    try {
-      const payload = {
-        email: email.trim().toLowerCase(),
-        password,
-      };
+/**
+ * Seller Login with Role Verification
+ */
+async sellerLogin({ email, password, remember = true }) {
+  try {
+    const payload = {
+      email: email.trim().toLowerCase(),
+      password,
+    };
 
-      const response = await api.post('/seller/auth/login', payload);
-      const data = response.data || response;
-      const seller = data.seller;
-      const accessToken = data.accessToken || data.token;
-      const refreshToken = data.refreshToken;
+    const response = await api.post('/seller/auth/login', payload);
+    const data = response.data || response;
 
-      if (!accessToken || !seller) {
-        throw new Error('Invalid response from Seller authentication service');
-      }
+    const seller = data.seller || data.data?.seller;
+    const accessToken =
+      data.accessToken ||
+      data.token ||
+      data.data?.accessToken ||
+      data.data?.token;
 
-      await secureStorage.saveAuthSession({
-        token: accessToken,
-        refreshToken,
-        user: seller,
-        role: 'seller',
-        remember,
-      });
+    const refreshToken =
+      data.refreshToken ||
+      data.data?.refreshToken;
 
-      // Default active mode when entering via Seller Studio is seller
-      await secureStorage.setActiveAppMode('seller');
-
-      return {
-        success: true,
-        user: seller,
-        token: accessToken,
-        role: 'seller',
-      };
-    } catch (error) {
-      throw error;
+    if (!accessToken || !seller) {
+      throw new Error('Invalid response from Seller authentication service');
     }
-  },
 
+    const sellerWithCustomerId = {
+      ...seller,
+      customerUserId:
+        seller.customerUserId ||
+        seller._id,
+    };
+
+    await secureStorage.saveAuthSession({
+      token: accessToken,
+      refreshToken,
+      user: sellerWithCustomerId,
+      role: 'seller',
+      remember,
+    });
+
+    // Default active mode when entering via Seller Studio is seller
+    await secureStorage.setActiveAppMode('seller');
+
+    return {
+      success: true,
+      user: sellerWithCustomerId,
+      token: accessToken,
+      role: 'seller',
+    };
+  } catch (error) {
+    throw error;
+  }
+},
   /**
    * Seller Registration
    */
@@ -402,17 +449,23 @@ export const authService = {
         throw new Error('Invalid response from Delivery authentication service');
       }
 
+      const deliveryPartnerUser = {
+        ...partner,
+        role: 'delivery',
+        isDelivery: true,
+      };
+
       await secureStorage.saveAuthSession({
         token: accessToken,
         refreshToken,
-        user: partner,
+        user: deliveryPartnerUser,
         role: 'delivery',
         remember,
       });
 
       return {
         success: true,
-        user: partner,
+        user: deliveryPartnerUser,
         token: accessToken,
         role: 'delivery',
       };
@@ -483,6 +536,14 @@ export const authService = {
    */
   async updateDeliveryTaskStatus(taskId, status) {
     try {
+      if (status === 'out_for_delivery') {
+        const directRes = await api
+          .post(`/delivery/deliveries/${taskId}/out-for-delivery`)
+          .catch(() => null);
+        if (directRes && (directRes.data || directRes.success)) {
+          return directRes.data || directRes;
+        }
+      }
       const response = await api.patch(`/delivery/tasks/${taskId}/status`, { status });
       return response.data || response;
     } catch (error) {
@@ -495,7 +556,9 @@ export const authService = {
    */
   async verifyDeliveryOtp(taskId, otp) {
     try {
-      const response = await api.post(`/delivery/tasks/${taskId}/verify-otp`, { otp });
+      const response = await api
+        .post(`/delivery/deliveries/${taskId}/verify-delivery-otp`, { otp })
+        .catch(() => api.post(`/delivery/tasks/${taskId}/verify-otp`, { otp }));
       return response.data || response;
     } catch (error) {
       throw error;
@@ -663,74 +726,106 @@ export const authService = {
   /**
    * Restore Session after app restart
    */
-  async restoreSession() {
-    try {
-      const session = await secureStorage.getAuthSession();
-      if (!session.token || !session.user) {
-        return {
-          user: null,
-          token: null,
-          role: null,
-          isAuthenticated: false,
-          isAdmin: false,
-        };
-      }
+/**
+ * Restore Session after app restart
+ */
+async restoreSession() {
+  try {
+    const session = await secureStorage.getAuthSession();
 
-      // If user did not check 'remember me', clear session on restart
-      if (!session.remember) {
-        await secureStorage.clearAuthSession();
-        return {
-          user: null,
-          token: null,
-          role: null,
-          isAuthenticated: false,
-          isAdmin: false,
-        };
-      }
-
-      // Verify active session with backend in background
-      try {
-        const freshProfile = await this.getCurrentProfile(session.role);
-        if (freshProfile?.user || freshProfile?.admin || freshProfile?.seller) {
-          const updatedUser = freshProfile.user || freshProfile.admin || freshProfile.seller;
-          await secureStorage.saveAuthSession({
-            token: session.token,
-            refreshToken: session.refreshToken,
-            user: updatedUser,
-            role: session.role,
-            remember: true,
-          });
-          session.user = updatedUser;
-        }
-      } catch (e) {
-        // Silent token refresh or use offline cached session
-      }
-
-      const activeMode = await secureStorage.getActiveAppMode();
-
-      return {
-        user: session.user,
-        token: session.token,
-        role: session.role,
-        activeMode: activeMode || (session.role === 'seller' ? 'seller' : 'customer'),
-        isAuthenticated: true,
-        isAdmin: session.role === 'admin',
-        isSeller: session.role === 'seller' || session.user?.isSeller || false,
-      };
-    } catch (error) {
-      console.warn('Error restoring session:', error);
+    if (!session || !session.token || !session.user) {
       return {
         user: null,
         token: null,
         role: null,
-        activeMode: 'customer',
         isAuthenticated: false,
         isAdmin: false,
         isSeller: false,
       };
     }
-  },
 
+    // If user did not check 'remember me', clear session on restart
+    if (!session.remember) {
+      await secureStorage.clearAuthSession();
+
+      return {
+        user: null,
+        token: null,
+        role: null,
+        isAuthenticated: false,
+        isAdmin: false,
+        isSeller: false,
+      };
+    }
+
+    // Preserve existing session data if profile refresh fails
+    try {
+      const freshProfile = await this.getCurrentProfile(session.role);
+
+      const updatedUser =
+        freshProfile?.user ||
+        freshProfile?.admin ||
+        freshProfile?.seller;
+
+      if (updatedUser) {
+        const mergedUser = {
+          ...session.user,
+          ...updatedUser,
+        };
+
+        // Preserve canonical customer User ID for Seller accounts
+        if (session.role === 'seller') {
+          mergedUser.customerUserId =
+            updatedUser.customerUserId ||
+            session.user.customerUserId ||
+            updatedUser._id ||
+            session.user._id;
+        }
+
+        await secureStorage.saveAuthSession({
+          token: session.token,
+          refreshToken: session.refreshToken,
+          user: mergedUser,
+          role: session.role,
+          remember: true,
+        });
+
+        session.user = mergedUser;
+      }
+    } catch (e) {
+      // Keep offline cached session
+    }
+
+    const activeMode = await secureStorage.getActiveAppMode();
+
+    return {
+      user: session.user,
+      token: session.token,
+      role: session.role,
+      activeMode:
+        activeMode ||
+        (session.role === 'seller' ? 'seller' : 'customer'),
+      isAuthenticated: true,
+      isAdmin: session.role === 'admin',
+      isSeller:
+        session.role === 'seller' ||
+        session.user?.isSeller ||
+        false,
+    };
+  } catch (error) {
+    console.warn('Error restoring session:', error);
+
+    return {
+      user: null,
+      token: null,
+      role: null,
+      activeMode: 'customer',
+      isAuthenticated: false,
+      isAdmin: false,
+      isSeller: false,
+    };
+  }
+},
   /**
    * Dual Access Mode Switching (Switch between 'customer' and 'seller')
    */

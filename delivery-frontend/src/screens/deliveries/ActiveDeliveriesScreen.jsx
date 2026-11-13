@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+
+import React, { useState, useCallback } from 'react';
+
 import {
   View,
   Text,
@@ -9,17 +11,35 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import CustomHeader from '../../components/common/CustomHeader';
 import DeliveryCard from '../../components/cards/DeliveryCard';
 import CustomButton from '../../components/common/CustomButton';
+
 import Colors from '../../constants/colors';
+
 import { useDelivery } from '../../context/DeliveryContext';
 import { deliveryService } from '../../services/deliveryService';
 
-export const ActiveDeliveriesScreen = ({ navigation }) => {
+const getDeliveryId = (delivery) => {
+  return delivery?._id || delivery?.deliveryNumber || null;
+};
+
+const getErrorMessage = (error, fallback) => {
+  return (
+    error?.message ||
+    error?.response?.data?.message ||
+    fallback
+  );
+};
+
+export const ActiveDeliveriesScreen = () => {
   const insets = useSafeAreaInsets();
+
   const {
     activeDeliveries,
     loading,
@@ -29,7 +49,6 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
     reportFailure,
   } = useDelivery();
 
-  // Modal States
   const [pickupModalDelivery, setPickupModalDelivery] = useState(null);
   const [pickupOtpInput, setPickupOtpInput] = useState('');
 
@@ -41,47 +60,79 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
   const [issueNotes, setIssueNotes] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [processingDeliveryId, setProcessingDeliveryId] = useState(null);
 
-  // Step Action Decider
+  const refreshDeliveries = useCallback(async () => {
+    await fetchActiveDeliveries();
+  }, [fetchActiveDeliveries]);
+
+  // Execute the next delivery lifecycle action.
   const handleDeliveryAction = async (delivery) => {
-    const status = delivery.status;
-    const delId = delivery._id || delivery.deliveryNumber;
+    const status = delivery?.status;
+    const deliveryId = getDeliveryId(delivery);
 
-    if (status === 'assigned' || status === 'accepted') {
-      // Step 1: Mark Reached Pickup
-      try {
-        await deliveryService.reachedPickup(delId);
-        Alert.alert('Reached Store', 'Please collect package from store and ask for 4-digit pickup OTP.');
-        fetchActiveDeliveries();
-      } catch (e) {
-        Alert.alert('Error', e.message);
+    if (!deliveryId) {
+      Alert.alert('Error', 'Delivery ID is missing.');
+      return;
+    }
+
+    if (processingDeliveryId) return;
+
+    try {
+      setProcessingDeliveryId(String(deliveryId));
+
+      if (status === 'assigned' || status === 'accepted') {
+        await deliveryService.reachedPickup(deliveryId);
+
+        await refreshDeliveries();
+
+        Alert.alert(
+          'Reached Store',
+          'Please collect the package and ask store staff for the 4-digit pickup OTP.'
+        );
+
+      } else if (status === 'reached_pickup') {
+        setPickupOtpInput('');
+        setPickupModalDelivery(delivery);
+
+      } else if (status === 'picked_up') {
+        await deliveryService.outForDelivery(deliveryId);
+
+        await refreshDeliveries();
+
+        Alert.alert(
+          'In Transit',
+          'Package marked Out for Delivery. Proceed to the customer address.'
+        );
+
+      } else if (status === 'out_for_delivery') {
+        await deliveryService.reachedCustomer(deliveryId);
+
+        await refreshDeliveries();
+
+        Alert.alert(
+          'Reached Customer',
+          'Ask the customer for their 4-digit delivery verification OTP.'
+        );
+
+      } else if (status === 'reached_customer') {
+        setDeliveryOtpInput('');
+        setDeliveryModalDelivery(delivery);
+
+      } else {
+        Alert.alert(
+          'Delivery Status',
+          `Current delivery status: ${status || 'Unknown'}`
+        );
       }
-    } else if (status === 'reached_pickup') {
-      // Step 2: Open Pickup OTP Modal
-      setPickupModalDelivery(delivery);
-      setPickupOtpInput(delivery.pickupOtp || '7821');
-    } else if (status === 'picked_up') {
-      // Step 3: Start Out For Delivery
-      try {
-        await deliveryService.outForDelivery(delId);
-        Alert.alert('In Transit', 'Package is marked Out for Delivery. Navigate to customer doorstep.');
-        fetchActiveDeliveries();
-      } catch (e) {
-        Alert.alert('Error', e.message);
-      }
-    } else if (status === 'out_for_delivery') {
-      // Step 4: Reached Customer Doorstep
-      try {
-        await deliveryService.reachedCustomer(delId);
-        Alert.alert('Reached Customer', 'Ring customer doorbell and request 4-digit delivery verification OTP.');
-        fetchActiveDeliveries();
-      } catch (e) {
-        Alert.alert('Error', e.message);
-      }
-    } else if (status === 'reached_customer') {
-      // Step 5: Open Customer Delivery OTP Modal
-      setDeliveryModalDelivery(delivery);
-      setDeliveryOtpInput(delivery.deliveryOtp || '4521');
+
+    } catch (error) {
+      Alert.alert(
+        'Action Failed',
+        getErrorMessage(error, 'Could not update delivery status.')
+      );
+    } finally {
+      setProcessingDeliveryId(null);
     }
   };
 
@@ -89,74 +140,143 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
     switch (status) {
       case 'assigned':
       case 'accepted':
-        return '1. Mark Reached Store Pickup 🏪';
+        return '1. Mark Reached Store Pickup';
+
       case 'reached_pickup':
-        return '2. Verify Store Pickup OTP 🔐';
+        return '2. Verify Store Pickup OTP';
+
       case 'picked_up':
-        return '3. Start Out For Delivery 🛵';
+        return '3. Start Out For Delivery';
+
       case 'out_for_delivery':
-        return '4. Mark Reached Customer 📍';
+        return '4. Mark Reached Customer';
+
       case 'reached_customer':
-        return '5. Verify Customer Delivery OTP & Complete 🎉';
+        return '5. Verify Delivery OTP & Complete';
+
       default:
         return 'View Delivery Details';
     }
   };
 
+  // Verify pickup OTP.
   const submitPickupOtp = async () => {
-    if (!pickupOtpInput || pickupOtpInput.length < 4) {
-      Alert.alert('OTP Required', 'Enter 4-digit store pickup OTP');
+    const otp = pickupOtpInput.trim();
+    const deliveryId = getDeliveryId(pickupModalDelivery);
+
+    if (!/^\d{4}$/.test(otp)) {
+      Alert.alert(
+        'Invalid OTP',
+        'Enter the correct 4-digit store pickup OTP.'
+      );
       return;
     }
+
+    if (!deliveryId || submitting) return;
+
     setSubmitting(true);
+
     try {
-      await verifyPickupOtp(pickupModalDelivery._id || pickupModalDelivery.deliveryNumber, pickupOtpInput);
+      await verifyPickupOtp(deliveryId, otp);
+
       setPickupModalDelivery(null);
-    } catch (e) {
-      // handled
+      setPickupOtpInput('');
+
+    } catch (error) {
+      // Error alert is handled by DeliveryContext.
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Verify customer delivery OTP.
   const submitDeliveryOtp = async () => {
-    if (!deliveryOtpInput || deliveryOtpInput.length < 4) {
-      Alert.alert('OTP Required', 'Enter 4-digit customer delivery OTP');
+    const otp = deliveryOtpInput.trim();
+    const deliveryId = getDeliveryId(deliveryModalDelivery);
+
+    if (!/^\d{4}$/.test(otp)) {
+      Alert.alert(
+        'Invalid OTP',
+        'Enter the correct 4-digit customer delivery OTP.'
+      );
       return;
     }
+
+    if (!deliveryId || submitting) return;
+
     setSubmitting(true);
+
     try {
-      await verifyDeliveryOtp(deliveryModalDelivery._id || deliveryModalDelivery.deliveryNumber, {
-        otp: deliveryOtpInput,
-      });
+      await verifyDeliveryOtp(deliveryId, { otp });
+
       setDeliveryModalDelivery(null);
-    } catch (e) {
-      // handled
+      setDeliveryOtpInput('');
+
+    } catch (error) {
+      // Error alert is handled by DeliveryContext.
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Submit delivery failure report.
   const submitIssue = async () => {
+    const deliveryId = getDeliveryId(issueModalDelivery);
+
+    if (!deliveryId || submitting) return;
+
     setSubmitting(true);
+
     try {
-      await reportFailure(issueModalDelivery._id || issueModalDelivery.deliveryNumber, {
+      await reportFailure(deliveryId, {
         reason: issueReason,
-        notes: issueNotes,
+        notes: issueNotes.trim(),
       });
+
       setIssueModalDelivery(null);
-    } catch (e) {
-      // handled
+      setIssueNotes('');
+      setIssueReason('customer_unavailable');
+
+    } catch (error) {
+      // Error alert is handled by DeliveryContext.
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const closePickupModal = () => {
+    if (submitting) return;
+
+    setPickupModalDelivery(null);
+    setPickupOtpInput('');
+  };
+
+  const closeDeliveryModal = () => {
+    if (submitting) return;
+
+    setDeliveryModalDelivery(null);
+    setDeliveryOtpInput('');
+  };
+
+  const closeIssueModal = () => {
+    if (submitting) return;
+
+    setIssueModalDelivery(null);
+    setIssueNotes('');
+    setIssueReason('customer_unavailable');
+  };
+
+  const openIssueModal = (delivery) => {
+    setIssueReason('customer_unavailable');
+    setIssueNotes('');
+    setIssueModalDelivery(delivery);
   };
 
   return (
     <View style={styles.container}>
       <CustomHeader
         title="Active Deliveries"
-        subtitle={`${activeDeliveries.length} orders in transit`}
+        subtitle={`${activeDeliveries.length} active orders`}
       />
 
       <ScrollView
@@ -164,57 +284,110 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
           styles.content,
           { paddingBottom: insets.bottom + 80 },
         ]}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchActiveDeliveries} tintColor={Colors.primary} />}
-        showsVerticalScrollIndicator={false}>
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refreshDeliveries}
+            tintColor={Colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         {activeDeliveries.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>🛵</Text>
-            <Text style={styles.emptyTitle}>No In-Progress Deliveries</Text>
-            <Text style={styles.emptySub}>
-              Accept incoming requests from the Requests tab to start a delivery run.
+
+            <Text style={styles.emptyTitle}>
+              No Active Deliveries
             </Text>
+
+            <Text style={styles.emptySub}>
+              Accept incoming requests from the Requests tab to start a delivery.
+            </Text>
+
+            <CustomButton
+              title="Refresh"
+              variant="primary"
+              size="medium"
+              onPress={refreshDeliveries}
+              style={styles.refreshButton}
+            />
           </View>
         ) : (
-          activeDeliveries.map((item) => (
-            <View key={item._id || item.deliveryNumber}>
-              <DeliveryCard
-                delivery={item}
-                actionLabel={getActionLabel(item.status)}
-                onAction={() => handleDeliveryAction(item)}
-              />
-              <TouchableOpacity
-                style={styles.issueBtn}
-                onPress={() => {
-                  setIssueModalDelivery(item);
-                  setIssueNotes('');
-                }}>
-                <Text style={styles.issueText}>⚠️ Report Delivery Issue / Customer Unavailable</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+          activeDeliveries.map((item) => {
+            const deliveryId = getDeliveryId(item);
+            const isProcessing =
+              processingDeliveryId === String(deliveryId);
+
+            return (
+              <View key={String(deliveryId)}>
+                <DeliveryCard
+                  delivery={item}
+                  actionLabel={
+                    isProcessing
+                      ? 'Please wait...'
+                      : getActionLabel(item.status)
+                  }
+                  onAction={() => handleDeliveryAction(item)}
+                />
+
+                {isProcessing ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={Colors.primary}
+                    style={styles.processingIndicator}
+                  />
+                ) : null}
+
+                <TouchableOpacity
+                  style={styles.issueBtn}
+                  disabled={isProcessing || submitting}
+                  onPress={() => openIssueModal(item)}
+                >
+                  <Text style={styles.issueText}>
+                    ⚠️ Report Delivery Issue / Customer Unavailable
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
 
-      {/* 1. Store Pickup OTP Modal */}
-      <Modal visible={!!pickupModalDelivery} transparent animationType="fade">
+      {/* Store Pickup OTP Modal */}
+      <Modal
+        visible={!!pickupModalDelivery}
+        transparent
+        animationType="fade"
+        onRequestClose={closePickupModal}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Enter Store Pickup OTP</Text>
+            <Text style={styles.modalTitle}>
+              Enter Store Pickup OTP
+            </Text>
+
             <Text style={styles.modalSub}>
               Ask store staff at{' '}
-              <Text style={{ fontWeight: '800' }}>
-                {pickupModalDelivery?.pickupAddress?.storeName || 'Merchant'}
+              <Text style={styles.boldText}>
+                {pickupModalDelivery?.pickupAddress?.storeName ||
+                  'Merchant'}
               </Text>{' '}
-              for the 4-digit handover OTP.
+              for the 4-digit package handover OTP.
             </Text>
 
             <TextInput
               style={styles.otpInput}
               value={pickupOtpInput}
-              onChangeText={setPickupOtpInput}
+              onChangeText={(value) =>
+                setPickupOtpInput(value.replace(/\D/g, '').slice(0, 4))
+              }
               keyboardType="number-pad"
               maxLength={4}
               placeholder="••••"
+              placeholderTextColor="#94A3B8"
+              editable={!submitting}
+              autoFocus
             />
 
             <View style={styles.modalActions}>
@@ -222,14 +395,17 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
                 title="Cancel"
                 variant="outline"
                 size="medium"
-                onPress={() => setPickupModalDelivery(null)}
+                onPress={closePickupModal}
+                disabled={submitting}
                 style={{ flex: 1 }}
               />
+
               <CustomButton
                 title="Verify Pickup"
                 variant="primary"
                 size="medium"
                 loading={submitting}
+                disabled={submitting}
                 onPress={submitPickupOtp}
                 style={{ flex: 1.5 }}
               />
@@ -238,49 +414,72 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* 2. Customer Delivery OTP Modal */}
-      <Modal visible={!!deliveryModalDelivery} transparent animationType="fade">
+      {/* Customer Delivery OTP Modal */}
+      <Modal
+        visible={!!deliveryModalDelivery}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeliveryModal}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Enter Customer Delivery OTP</Text>
+            <Text style={styles.modalTitle}>
+              Enter Customer Delivery OTP
+            </Text>
+
             <Text style={styles.modalSub}>
               Ask recipient{' '}
-              <Text style={{ fontWeight: '800' }}>
-                {deliveryModalDelivery?.deliveryAddress?.fullName || 'Customer'}
+              <Text style={styles.boldText}>
+                {deliveryModalDelivery?.deliveryAddress?.fullName ||
+                  'Customer'}
               </Text>{' '}
-              for their 4-digit delivery security code.
+              for their 4-digit delivery security OTP.
             </Text>
 
             <TextInput
               style={styles.otpInput}
               value={deliveryOtpInput}
-              onChangeText={setDeliveryOtpInput}
+              onChangeText={(value) =>
+                setDeliveryOtpInput(value.replace(/\D/g, '').slice(0, 4))
+              }
               keyboardType="number-pad"
               maxLength={4}
               placeholder="••••"
+              placeholderTextColor="#94A3B8"
+              editable={!submitting}
+              autoFocus
             />
 
-            {deliveryModalDelivery?.paymentMethod === 'COD' && (
+            {String(
+              deliveryModalDelivery?.paymentMethod || ''
+            ).toUpperCase() === 'COD' ? (
               <View style={styles.codAlert}>
                 <Text style={styles.codAlertText}>
-                  💵 Collect {deliveryModalDelivery?.codAmount || 1899} in Cash before verifying OTP!
+                  💵 Collect{' '}
+                  {deliveryModalDelivery?.codAmount != null
+                    ? `₹${deliveryModalDelivery.codAmount}`
+                    : 'the COD amount shown in the order'}
+                  {' '}in cash before completing delivery.
                 </Text>
               </View>
-            )}
+            ) : null}
 
             <View style={styles.modalActions}>
               <CustomButton
                 title="Cancel"
                 variant="outline"
                 size="medium"
-                onPress={() => setDeliveryModalDelivery(null)}
+                onPress={closeDeliveryModal}
+                disabled={submitting}
                 style={{ flex: 1 }}
               />
+
               <CustomButton
                 title="Verify & Complete"
                 variant="primary"
                 size="medium"
                 loading={submitting}
+                disabled={submitting}
                 onPress={submitDeliveryOtp}
                 style={{ flex: 1.6 }}
               />
@@ -289,36 +488,64 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* 3. Delivery Issue Report Modal */}
-      <Modal visible={!!issueModalDelivery} transparent animationType="fade">
+      {/* Delivery Issue Report Modal */}
+      <Modal
+        visible={!!issueModalDelivery}
+        transparent
+        animationType="fade"
+        onRequestClose={closeIssueModal}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Report Delivery Issue</Text>
+            <Text style={styles.modalTitle}>
+              Report Delivery Issue
+            </Text>
+
             <Text style={styles.modalSub}>
-              Select the reason why the order could not be completed.
+              Select the reason why this order could not be completed.
             </Text>
 
             <View style={styles.reasonList}>
               {[
-                { id: 'customer_unavailable', label: 'Customer Not Available / Door Locked' },
-                { id: 'customer_refused', label: 'Customer Refused Order' },
-                { id: 'incorrect_address', label: 'Incorrect or Incomplete Address' },
-                { id: 'phone_unreachable', label: 'Phone Switch Off / Not Reachable' },
-                { id: 'package_damaged', label: 'Package Damaged in Transit' },
-              ].map((r) => (
+                {
+                  id: 'customer_unavailable',
+                  label: 'Customer Not Available / Door Locked',
+                },
+                {
+                  id: 'customer_refused',
+                  label: 'Customer Refused Order',
+                },
+                {
+                  id: 'incorrect_address',
+                  label: 'Incorrect or Incomplete Address',
+                },
+                {
+                  id: 'phone_unreachable',
+                  label: 'Phone Switch Off / Not Reachable',
+                },
+                {
+                  id: 'package_damaged',
+                  label: 'Package Damaged in Transit',
+                },
+              ].map((reason) => (
                 <TouchableOpacity
-                  key={r.id}
+                  key={reason.id}
+                  disabled={submitting}
                   style={[
                     styles.reasonOption,
-                    issueReason === r.id && styles.reasonOptionActive,
+                    issueReason === reason.id &&
+                      styles.reasonOptionActive,
                   ]}
-                  onPress={() => setIssueReason(r.id)}>
+                  onPress={() => setIssueReason(reason.id)}
+                >
                   <Text
                     style={[
                       styles.reasonOptionText,
-                      issueReason === r.id && styles.reasonOptionTextActive,
-                    ]}>
-                    {r.label}
+                      issueReason === reason.id &&
+                        styles.reasonOptionTextActive,
+                    ]}
+                  >
+                    {reason.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -331,6 +558,8 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
               placeholder="Additional notes for dispatch team..."
               placeholderTextColor="#94A3B8"
               multiline
+              maxLength={500}
+              editable={!submitting}
             />
 
             <View style={styles.modalActions}>
@@ -338,14 +567,17 @@ export const ActiveDeliveriesScreen = ({ navigation }) => {
                 title="Cancel"
                 variant="outline"
                 size="medium"
-                onPress={() => setIssueModalDelivery(null)}
+                onPress={closeIssueModal}
+                disabled={submitting}
                 style={{ flex: 1 }}
               />
+
               <CustomButton
                 title="Submit Issue"
                 variant="danger"
                 size="medium"
                 loading={submitting}
+                disabled={submitting}
                 onPress={submitIssue}
                 style={{ flex: 1.5 }}
               />
@@ -362,19 +594,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+
   content: {
     padding: 16,
   },
+
   issueBtn: {
     alignSelf: 'center',
     marginBottom: 16,
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
+
   issueText: {
     fontSize: 11,
     fontWeight: '700',
     color: '#DC2626',
   },
+
+  processingIndicator: {
+    marginVertical: 8,
+  },
+
   emptyContainer: {
     backgroundColor: Colors.white,
     borderRadius: 20,
@@ -384,15 +624,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+
   emptyEmoji: {
     fontSize: 48,
     marginBottom: 12,
   },
+
   emptyTitle: {
     fontSize: 16,
     fontWeight: '900',
     color: Colors.textPrimary,
   },
+
   emptySub: {
     fontSize: 12,
     color: Colors.textSecondary,
@@ -401,6 +644,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     maxWidth: 280,
   },
+
+  refreshButton: {
+    marginTop: 18,
+    minWidth: 130,
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
@@ -408,6 +657,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+
   modalCard: {
     width: '100%',
     backgroundColor: Colors.white,
@@ -415,20 +665,28 @@ const styles = StyleSheet.create({
     padding: 20,
     elevation: 6,
   },
+
   modalTitle: {
     fontSize: 18,
     fontWeight: '900',
     color: Colors.textPrimary,
     textAlign: 'center',
   },
+
   modalSub: {
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 16,
-    lineHeight: 17,
+    lineHeight: 18,
   },
+
+  boldText: {
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+
   otpInput: {
     borderWidth: 2,
     borderColor: Colors.primary,
@@ -442,6 +700,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     marginBottom: 16,
   },
+
   codAlert: {
     backgroundColor: '#FEF3C7',
     padding: 10,
@@ -450,20 +709,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
+
   codAlertText: {
     fontSize: 12,
     fontWeight: '800',
     color: '#B45309',
     textAlign: 'center',
   },
+
   modalActions: {
     flexDirection: 'row',
     gap: 10,
   },
+
   reasonList: {
     gap: 6,
     marginBottom: 12,
   },
+
   reasonOption: {
     padding: 10,
     borderRadius: 10,
@@ -471,24 +734,28 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: '#F8FAFC',
   },
+
   reasonOptionActive: {
     borderColor: Colors.danger,
     backgroundColor: '#FEE2E2',
   },
+
   reasonOptionText: {
     fontSize: 12,
     color: Colors.textPrimary,
     fontWeight: '600',
   },
+
   reasonOptionTextActive: {
     color: Colors.danger,
     fontWeight: '800',
   },
+
   notesInput: {
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 10,
-    height: 60,
+    height: 70,
     padding: 10,
     fontSize: 12,
     textAlignVertical: 'top',

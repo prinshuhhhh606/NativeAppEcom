@@ -73,8 +73,9 @@ const register = asyncHandler(async (req, res) => {
     isActive: true,
   });
 
-  // Dual Access System: provision shadow customer User record for future shopping
-  await syncSellerToUser(seller);
+ // Dual Access System: Get canonical User record for customer orders
+// Dual Access System: provision shadow customer User record
+await syncSellerToUser(seller);
 
   // Notify Admin of new registration awaiting approval
   try {
@@ -196,15 +197,17 @@ const login = asyncHandler(async (req, res) => {
   await seller.save({ validateBeforeSave: false });
 
   // Dual Access System: Automatically ensure shadow User exists
-  await syncSellerToUser(seller);
+ // Dual Access System: Get canonical User record for customer orders
+const shadowUser = await syncSellerToUser(seller);
 
   return successResponse(
     res,
     {
       seller: {
-        id: seller._id,
-        _id: seller._id,
-        name: seller.name,
+  id: seller._id,
+  _id: seller._id,
+  customerUserId: shadowUser?._id || seller._id,
+  name: seller.name,
         fullName: seller.name,
         email: seller.email,
         phone: seller.phone,
@@ -306,13 +309,14 @@ const getProfile = asyncHandler(async (req, res) => {
   if (!seller) {
     return errorResponse(res, 'Seller not found', 404);
   }
-
+const shadowUser = await syncSellerToUser(seller);
   return successResponse(
     res,
     {
       seller: {
-        id: seller._id,
-        name: seller.name,
+  id: seller._id,
+  customerUserId: shadowUser?._id || seller._id,
+  name: seller.name,
         email: seller.email,
         phone: seller.phone,
         avatar: seller.avatar,

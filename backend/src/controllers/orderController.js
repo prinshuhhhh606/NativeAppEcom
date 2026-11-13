@@ -171,7 +171,8 @@ const createOrder = asyncHandler(async (req, res) => {
   const orderNumber = orderId;
   const estimatedDelivery = shippingService.checkPinCodeServiceability(pinCode);
   const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
-
+  const orderAcceptedAt = new Date();
+  
   const formattedAddress = {
     fullName: targetAddress.fullName || targetAddress.name || 'Customer',
     phone: targetAddress.phone || targetAddress.mobileNumber || '9876543210',
@@ -200,21 +201,37 @@ const createOrder = asyncHandler(async (req, res) => {
     totalAmount: pricing.grandTotal,
     paymentMethod: paymentMethod || 'UPI',
     paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Pending',
-    orderStatus: 'pending',
+    orderStatus: 'confirmed',
+acceptedAt: orderAcceptedAt,
     shippingDetails: {
       courierName: 'Delhivery Pan-India Express',
       estimatedDeliveryDate: estimatedDelivery.estimatedDeliveryDate,
     },
-    trackingTimeline: [
-      { status: 'Order Placed', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), completed: true },
-      { status: 'Seller Acceptance', time: 'Awaiting seller', completed: false },
-      { status: 'Processing', time: 'Pending', completed: false },
-      { status: 'Packed', time: 'Pending', completed: false },
-      { status: 'Shipped', time: 'Pending', completed: false },
-      { status: 'In Transit', time: 'Pending', completed: false },
-      { status: 'Out for Delivery', time: 'Pending', completed: false },
-      { status: 'Delivered', time: 'Pending', completed: false },
-    ],
+trackingTimeline: [
+  {
+    status: 'Order Placed',
+    time: orderAcceptedAt.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    completed: true,
+  },
+  {
+    status: 'Order Confirmed',
+    time: orderAcceptedAt.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    completed: true,
+  },
+  { status: 'Processing', time: 'Pending', completed: false },
+  { status: 'Packed', time: 'Pending', completed: false },
+  { status: 'Shipped', time: 'Pending', completed: false },
+  { status: 'Picked Up', time: 'Pending', completed: false },
+  { status: 'In Transit', time: 'Pending', completed: false },
+  { status: 'Out for Delivery', time: 'Pending', completed: false },
+  { status: 'Delivered', time: 'Pending', completed: false },
+],
     deliveryOtp,
     idempotencyKey,
   });
@@ -309,7 +326,8 @@ const createOrder = asyncHandler(async (req, res) => {
       commissionRate,
       commissionAmount,
       netEarnings,
-      status: 'pending',
+      status: 'confirmed',
+acceptedAt: orderAcceptedAt,
       paymentMethod: paymentMethod === 'COD' ? 'COD' : 'ONLINE',
       paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Pending',
       shipping: {
@@ -392,9 +410,11 @@ const createOrder = asyncHandler(async (req, res) => {
  * Get current user's orders
  * GET /api/orders/my-orders
  */
+
 const getMyOrders = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 50;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const requestedLimit = parseInt(req.query.limit, 10) || 200;
+  const limit = Math.min(Math.max(requestedLimit, 1), 200);
   const skip = (page - 1) * limit;
 
   const [rawOrders, total] = await Promise.all([
@@ -402,80 +422,162 @@ const getMyOrders = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('deliveryPartner', 'name phone vehicleType vehicleNumber rating profilePhoto')
-      .populate('items.product', 'name productName images brand price')
+      .populate(
+        'deliveryPartner',
+        'name phone vehicleType vehicleNumber rating profilePhoto'
+      )
+      .populate(
+        'items.product',
+        'name productName images brand price'
+      )
       .lean(),
+
     Order.countDocuments({ user: req.user._id }),
   ]);
 
-  // Synchronize active orders and enrich cancelled order refund status
   const orders = await Promise.all(
     rawOrders.map(async (order) => {
-      const statusNorm = (order.orderStatus || '').toLowerCase();
-      const isActive = !['delivered', 'cancelled', 'rejected'].includes(statusNorm);
+      const statusNorm = String(order.orderStatus || '').toLowerCase();
+
+      const isActive = ![
+        'delivered',
+        'cancelled',
+        'rejected',
+      ].includes(statusNorm);
 
       let activeOrder = order;
+
+      // Sync active order status
       if (isActive) {
         try {
           const syncResult = await syncParentOrderStatus(order._id);
+
           if (syncResult?.order) {
-            const syncedDoc = typeof syncResult.order.toObject === 'function'
-              ? syncResult.order.toObject()
-              : syncResult.order;
-            activeOrder = { ...order, ...syncedDoc };
+            const syncedDoc =
+              typeof syncResult.order.toObject === 'function'
+                ? syncResult.order.toObject()
+                : syncResult.order;
+
+            activeOrder = {
+              ...order,
+              ...syncedDoc,
+            };
           }
-        } catch (e) {}
+        } catch (error) {
+          console.warn(
+            '[getMyOrders] Order sync failed:',
+            order._id,
+            error.message
+          );
+        }
       }
 
-      // Check refund status for cancelled orders
+      // Check refund status for cancelled/rejected orders
       let refund = null;
+
       if (['cancelled', 'rejected'].includes(statusNorm)) {
         try {
-          const refundDoc = await Refund.findOne({ order: order._id }).lean();
+          const refundDoc = await Refund.findOne({
+            order: order._id,
+          }).lean();
+
           if (refundDoc) {
             refund = {
-              status: refundDoc.status === 'Processed' ? 'Refund Processed' : 'Refund Initiated',
+              status:
+                refundDoc.status === 'Processed'
+                  ? 'Refund Processed'
+                  : 'Refund Initiated',
               amount: refundDoc.amount,
               method: refundDoc.method,
               processedAt: refundDoc.processedAt,
             };
           } else {
+            const paymentMethod = String(
+              order.paymentMethod || ''
+            ).toLowerCase();
+
             const isCod =
-              (order.paymentMethod || '').toUpperCase().includes('COD') ||
-              (order.paymentMethod || '').toLowerCase().includes('cash');
+              paymentMethod.includes('cod') ||
+              paymentMethod.includes('cash');
+
             refund = {
-              status: isCod ? 'Not Applicable (COD)' : 'Refund Initiated',
-              amount: isCod ? 0 : (order.totalAmount || order.pricing?.grandTotal || 0),
-              method: isCod ? 'Cash on Delivery' : (order.paymentMethod || 'Original Payment Source'),
+              status: isCod
+                ? 'Not Applicable (COD)'
+                : 'Refund Initiated',
+              amount: isCod
+                ? 0
+                : (
+                    order.totalAmount ||
+                    order.pricing?.grandTotal ||
+                    0
+                  ),
+              method: isCod
+                ? 'Cash on Delivery'
+                : order.paymentMethod || 'Original Payment Source',
             };
           }
-        } catch (e) {}
+        } catch (error) {
+          console.warn(
+            '[getMyOrders] Refund lookup failed:',
+            order._id,
+            error.message
+          );
+        }
       }
 
       return {
         ...activeOrder,
-        orderId: activeOrder.orderId || activeOrder.orderNumber,
+
+        orderId:
+          activeOrder.orderId ||
+          activeOrder.orderNumber,
+
         status: activeOrder.orderStatus,
+
         summary: activeOrder.summary || {
-          subtotal: activeOrder.subtotal || activeOrder.pricing?.subtotal || 0,
-          discount: activeOrder.discount || activeOrder.pricing?.discount || 0,
-          deliveryFee: activeOrder.deliveryCharges || activeOrder.pricing?.deliveryFee || 0,
-          tax: activeOrder.tax || activeOrder.pricing?.tax || 0,
-          totalAmount: activeOrder.totalAmount || activeOrder.pricing?.grandTotal || 0,
+          subtotal:
+            activeOrder.subtotal ||
+            activeOrder.pricing?.subtotal ||
+            0,
+
+          discount:
+            activeOrder.discount ||
+            activeOrder.pricing?.discount ||
+            0,
+
+          deliveryFee:
+            activeOrder.deliveryCharges ||
+            activeOrder.pricing?.deliveryFee ||
+            0,
+
+          tax:
+            activeOrder.tax ||
+            activeOrder.pricing?.tax ||
+            0,
+
+          totalAmount:
+            activeOrder.totalAmount ||
+            activeOrder.pricing?.grandTotal ||
+            0,
         },
-        deliveryOtp: activeOrder.deliveryOtp || '4521',
-        cancellationReason: activeOrder.cancellationReason || 'Customer requested cancellation',
+
         refund,
       };
     })
   );
 
-  return successResponse(res, orders, 'Orders retrieved successfully', 200, {
-    page,
-    limit,
-    total,
-    pages: Math.ceil(total / limit),
-  });
+  return successResponse(
+    res,
+    orders,
+    'Orders retrieved successfully',
+    200,
+    {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    }
+  );
 });
 
 const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1019,31 +1121,101 @@ const getAllOrders = asyncHandler(async (req, res) => {
  * [Admin] Update order status and courier details
  * PATCH /api/orders/:id/status
  */
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { orderStatus, courierName, trackingNumber } = req.body;
 
   const order = await Order.findById(req.params.id);
+
   if (!order) {
     return errorResponse(res, 'Order not found', 404);
   }
 
-  if (orderStatus) {
-    order.orderStatus = orderStatus;
-    if (orderStatus === 'Delivered') {
+  // Normalize status
+  const normalizedStatus = orderStatus
+    ? String(orderStatus)
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+    : null;
+
+  // Update parent order
+  if (normalizedStatus) {
+    order.orderStatus = normalizedStatus;
+
+    if (normalizedStatus === 'confirmed') {
+      order.acceptedAt = order.acceptedAt || new Date();
+    }
+
+    if (normalizedStatus === 'delivered') {
       order.deliveredAt = new Date();
       order.paymentStatus = 'Paid';
     }
   }
 
-  if (courierName) order.shippingDetails.courierName = courierName;
-  if (trackingNumber) order.shippingDetails.trackingNumber = trackingNumber;
+  // Update courier details using actual Order schema fields
+  if (courierName) {
+    order.courierPartner = courierName;
+  }
+
+  if (trackingNumber) {
+    order.trackingNumber = trackingNumber;
+  }
 
   await order.save();
 
-  notificationService.sendOrderNotification(order.user, order, orderStatus.toLowerCase()).catch(() => {});
+  // Synchronize pending SellerOrders when parent is confirmed
+// Synchronize pending SellerOrders when parent is confirmed
+if (normalizedStatus === 'confirmed') {
+  const acceptedTime = order.acceptedAt || new Date();
+
+  const sellerOrderResult = await SellerOrder.updateMany(
+    {
+      $or: [
+        { order: order._id },
+        ...(order.orderNumber
+          ? [{ orderNumber: order.orderNumber }]
+          : []),
+      ],
+      status: {
+        $in: ['pending', 'new', 'placed'],
+      },
+    },
+    {
+      $set: {
+        status: 'confirmed',
+        acceptedAt: acceptedTime,
+      },
+    }
+  );
+
+  console.log('[ORDER STATUS SYNC]', {
+    orderId: order.orderId || order.orderNumber,
+    parentStatus: order.orderStatus,
+    sellerOrdersMatched: sellerOrderResult.matchedCount,
+    sellerOrdersModified: sellerOrderResult.modifiedCount,
+  });
+}
+  // Notification
+  if (normalizedStatus) {
+    notificationService
+      .sendOrderNotification(
+        order.user,
+        order,
+        normalizedStatus
+      )
+      .catch((error) => {
+        console.warn('[Order Notification]', error.message);
+      });
+  }
+
   emitOrderStatusUpdated(order);
 
-  return successResponse(res, order, 'Order status updated successfully');
+  return successResponse(
+    res,
+    order,
+    'Order status updated successfully'
+  );
 });
 
 /**

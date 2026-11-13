@@ -12,6 +12,13 @@ const Seller = require('../../models/Seller');
 const { calculateDistanceKm, calculateEtaMinutes } = require('../../utils/geoUtils');
 const { emitToSeller, emitToAdmins, emitToTrackingRoom, emitOrderStatusUpdated } = require('../../sockets/socketManager');
 const { syncParentOrderStatus } = require('../../utils/orderSync');
+const {
+  ACTIVE_DELIVERY_STATUSES,
+  INACTIVE_DELIVERY_STATUSES,
+  countActualActiveDeliveries,
+  syncPartnerActiveCount,
+  getPartnerCapacityInfo,
+} = require('../../utils/deliveryCapacityUtils');
 
 /**
  * Toggle Online / Offline Availability
@@ -67,13 +74,19 @@ const getDashboard = async (req, res) => {
     const partnerId = req.deliveryPartner._id;
     const partner = await DeliveryPartner.findById(partnerId);
 
-    // Active deliveries count
-    const activeDeliveriesCount = await Delivery.countDocuments({
-      deliveryPartner: partnerId,
-      status: {
-        $in: ['assigned', 'accepted', 'reached_pickup', 'picked_up', 'out_for_delivery', 'reached_customer'],
-      },
-    });
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Partner not found' });
+    }
+
+    // Single source of truth: count genuine ongoing active deliveries from Delivery collection
+    const activeDeliveriesCount = await countActualActiveDeliveries(partnerId);
+
+    // Auto-heal stored field if out-of-sync
+    if (partner.currentActiveDeliveries !== activeDeliveriesCount) {
+      await DeliveryPartner.findByIdAndUpdate(partnerId, {
+        $set: { currentActiveDeliveries: activeDeliveriesCount },
+      }).catch(() => {});
+    }
 
     // Today's completed count
     const startOfToday = new Date();
@@ -85,11 +98,11 @@ const getDashboard = async (req, res) => {
       deliveredAt: { $gte: startOfToday },
     });
 
-    // Pending incoming requests
+    // Pending incoming unexpired requests
     const pendingRequestsCount = await DeliveryAssignment.countDocuments({
       deliveryPartner: partnerId,
       status: 'requested',
-      responseDeadline: { $gte: new Date() },
+      responseDeadline: { $gt: new Date() },
     });
 
     return res.status(200).json({
@@ -109,17 +122,18 @@ const getDashboard = async (req, res) => {
           acceptanceRate: partner.acceptanceRate,
           completionRate: partner.completionRate,
           earnings: partner.earnings,
-          activeCapacity: partner.activeCapacity,
+          activeCapacity: partner.activeCapacity || 3,
           currentActiveDeliveries: activeDeliveriesCount,
+          capacityAvailable: Math.max(0, (partner.activeCapacity || 3) - activeDeliveriesCount),
         },
         kpis: {
           todayDeliveries: todayCompletedCount,
           activeDeliveries: activeDeliveriesCount,
           pendingRequests: pendingRequestsCount,
-          todayEarnings: partner.earnings?.todayEarned || 420,
-          weekEarnings: partner.earnings?.weekEarned || 3250,
-          availableBalance: partner.earnings?.available || 1450,
-          pendingCashToDeposit: partner.earnings?.pending || 680,
+          todayEarnings: partner.earnings?.todayEarned || 0,
+          weekEarnings: partner.earnings?.weekEarned || 0,
+          availableBalance: partner.earnings?.available || 0,
+          pendingCashToDeposit: partner.earnings?.pending || 0,
         },
       },
     });
@@ -146,57 +160,22 @@ const getRequests = async (req, res) => {
       });
     }
 
+    // Auto-expire assignments whose response deadline has elapsed
+    await DeliveryAssignment.updateMany(
+      {
+        deliveryPartner: partnerId,
+        status: 'requested',
+        responseDeadline: { $lte: new Date() },
+      },
+      { $set: { status: 'expired' } }
+    );
+
     // Fetch active assignments assigned to this partner that haven't expired
-    let requests = await DeliveryAssignment.find({
+    const requests = await DeliveryAssignment.find({
       deliveryPartner: partnerId,
       status: 'requested',
-      responseDeadline: { $gte: new Date(Date.now() - 3600000) }, // within last hour
+      responseDeadline: { $gt: new Date() },
     }).sort({ createdAt: -1 });
-
-    // If empty in development demo, auto-generate realistic incoming demo requests
-    if (requests.length === 0) {
-      const demoReq = await DeliveryAssignment.create({
-        assignmentId: `ASGN-${Math.floor(100000 + Math.random() * 900000)}`,
-        order: new (require('mongoose').Types.ObjectId)(),
-        orderNumber: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
-        seller: new (require('mongoose').Types.ObjectId)(),
-        sellerStoreName: 'Jaipur Heritage Handlooms',
-        deliveryPartner: partnerId,
-        deliveryPartnerName: req.deliveryPartner.name,
-        status: 'requested',
-        responseDeadline: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
-        pickupAddress: {
-          storeName: 'Jaipur Heritage Artisans Hub',
-          addressLine: 'Plot 42, Textile Market, MI Road',
-          city: 'Jaipur',
-          state: 'Rajasthan',
-          pinCode: '302001',
-          contactPhone: '+91 98290 12345',
-          latitude: 26.9124,
-          longitude: 75.7873,
-        },
-        deliveryAddress: {
-          fullName: 'Ananya Deshmukh',
-          addressLine: 'Flat 402, Royal Palms, Vaishali Nagar',
-          city: 'Jaipur',
-          state: 'Rajasthan',
-          pinCode: '302021',
-          mobileNumber: '+91 98765 43210',
-          latitude: 26.9015,
-          longitude: 75.7421,
-        },
-        packageCount: 1,
-        distanceKm: 4.8,
-        estimatedMinutes: 25,
-        deliveryFee: 75,
-        customerName: 'Ananya Deshmukh',
-        maskedCustomerPhone: '+91 98XXX 43210',
-        paymentMethod: 'ONLINE',
-        amountToCollect: 0,
-        specialInstructions: 'Pure silk package, deliver directly to resident.',
-      });
-      requests = [demoReq];
-    }
 
     return res.status(200).json({
       success: true,
@@ -226,14 +205,45 @@ const acceptRequest = async (req, res) => {
     }
 
     const assignment = await DeliveryAssignment.findOne({
-      $or: [{ _id: assignmentId }, { assignmentId: assignmentId }],
+      assignmentId: assignmentId,
       deliveryPartner: partnerId,
     });
-
     if (!assignment) {
       return res.status(404).json({
         success: false,
         message: 'Delivery assignment request not found',
+      });
+    }
+
+    if (assignment.responseDeadline <= new Date()) {
+      await DeliveryAssignment.findByIdAndUpdate(assignment._id, { $set: { status: 'expired' } });
+      return res.status(400).json({
+        success: false,
+        message: 'This delivery request has expired.',
+      });
+    }
+
+    const partner = await DeliveryPartner.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery partner not found.',
+      });
+    }
+
+    // Step 1: Check capacity against genuine ongoing deliveries
+    const actualCount = await countActualActiveDeliveries(partnerId);
+    const maxCapacity = Math.max(1, Number(partner.activeCapacity) || 3);
+
+    if (actualCount >= maxCapacity) {
+      return res.status(400).json({
+        success: false,
+        message: `Active delivery limit reached (${actualCount}/${maxCapacity}). Cannot accept more deliveries.`,
+        data: {
+          actualActive: actualCount,
+          activeCapacity: maxCapacity,
+          capacityAvailable: 0,
+        },
       });
     }
 
@@ -244,57 +254,95 @@ const acceptRequest = async (req, res) => {
       });
     }
 
-    // Atomic update
-    assignment.status = 'accepted';
-    assignment.acceptedAt = new Date();
-    await assignment.save();
 
-    // Create Active Delivery
-    const deliveryNumber = `DEL-${Math.floor(100000 + Math.random() * 900000)}`;
-    const delivery = await Delivery.create({
-      deliveryNumber,
-      assignment: assignment._id,
-      order: assignment.order,
-      orderNumber: assignment.orderNumber,
-      seller: assignment.seller,
-      deliveryPartner: partnerId,
-      status: 'accepted',
-      pickupAddress: assignment.pickupAddress,
-      deliveryAddress: assignment.deliveryAddress,
-      pickupOtp: '7821', // Predictable pickup OTP for demo
-      deliveryOtp: '4521', // Customer delivery OTP for demo
-      deliveryFee: assignment.deliveryFee,
-      paymentMethod: assignment.paymentMethod,
-      codAmount: assignment.amountToCollect,
-      timeline: [
-        {
+  
+
+    // Atomic update on DeliveryAssignment to prevent duplicate/concurrent acceptance
+    const updatedAssignment = await DeliveryAssignment.findOneAndUpdate(
+      {
+        _id: assignment._id,
+        deliveryPartner: partnerId,
+        status: 'requested',
+        responseDeadline: { $gt: new Date() },
+      },
+      {
+        $set: {
           status: 'accepted',
-          title: 'Delivery Request Accepted',
-          notes: `${req.deliveryPartner.name} accepted delivery assignment.`,
-          timestamp: new Date(),
-        },
-      ],
-    });
-
-    // Increment partner active deliveries
-    await DeliveryPartner.findByIdAndUpdate(partnerId, {
-      $inc: { currentActiveDeliveries: 1 },
-      $push: {
-        assignedTasks: {
-          order: assignment.order,
-          orderNumber: assignment.orderNumber,
-          customerName: assignment.customerName,
-          customerPhone: assignment.deliveryAddress?.mobileNumber || '9876543210',
-          deliveryAddress: assignment.deliveryAddress,
-          paymentMethod: assignment.paymentMethod,
-          amountToCollect: assignment.amountToCollect,
-          deliveryFee: assignment.deliveryFee,
-          status: 'assigned',
-          pickupOtp: '7821',
-          deliveryOtp: '4521',
+          acceptedAt: new Date(),
         },
       },
-    });
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedAssignment) {
+      return res.status(409).json({
+        success: false,
+        message: 'Request expired or already accepted by another process.',
+      });
+    }
+
+    // Atomic partner capacity reservation with $expr check
+    const updatedPartner = await DeliveryPartner.findOneAndUpdate(
+      {
+        _id: partnerId,
+        $expr: { $lt: ['$currentActiveDeliveries', '$activeCapacity'] },
+      },
+      {
+        $inc: { currentActiveDeliveries: 1 },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedPartner) {
+      const recheckedCount = await countActualActiveDeliveries(partnerId);
+      if (recheckedCount >= maxCapacity) {
+        await DeliveryAssignment.findByIdAndUpdate(assignment._id, {
+          $set: { status: 'requested', acceptedAt: null },
+        });
+        return res.status(400).json({
+          success: false,
+          message: `Active delivery limit reached (${recheckedCount}/${maxCapacity}).`,
+        });
+      } else {
+        await DeliveryPartner.findByIdAndUpdate(partnerId, {
+          $set: { currentActiveDeliveries: recheckedCount + 1 },
+        });
+      }
+    }
+
+    // Idempotently create Delivery document
+    let delivery = await Delivery.findOne({ assignment: updatedAssignment._id });
+    if (!delivery) {
+      const deliveryNumber = `DEL-${Math.floor(100000 + Math.random() * 900000)}`;
+      delivery = await Delivery.create({
+        deliveryNumber,
+        assignment: updatedAssignment._id,
+        order: updatedAssignment.order,
+        orderNumber: updatedAssignment.orderNumber,
+        seller: updatedAssignment.seller,
+        deliveryPartner: partnerId,
+        status: 'accepted',
+        pickupAddress: updatedAssignment.pickupAddress,
+        deliveryAddress: updatedAssignment.deliveryAddress,
+        pickupOtp: '7821', // Predictable pickup OTP for demo
+        deliveryOtp: '4521', // Customer delivery OTP for demo
+        deliveryFee: updatedAssignment.deliveryFee,
+        paymentMethod: updatedAssignment.paymentMethod,
+        codAmount: updatedAssignment.amountToCollect,
+        timeline: [
+          {
+            status: 'accepted',
+            title: 'Delivery Request Accepted',
+            notes: `${req.deliveryPartner.name} accepted delivery assignment.`,
+            timestamp: new Date(),
+          },
+        ],
+      });
+    }
+
+    // Sync partner currentActiveDeliveries with actual active Deliveries
+    await syncPartnerActiveCount(partnerId);
+ 
 
     // Notify seller in real-time
     emitToSeller(assignment.seller, 'delivery:assignment_accepted', {
@@ -304,7 +352,7 @@ const acceptRequest = async (req, res) => {
       riderName: req.deliveryPartner.name,
       riderPhone: req.deliveryPartner.phone,
       vehicle: req.deliveryPartner.vehicleNumber,
-      acceptedAt: assignment.acceptedAt,
+     acceptedAt: updatedAssignment.acceptedAt,
     });
 
     emitToAdmins('delivery:assignment_accepted', {
@@ -316,9 +364,11 @@ const acceptRequest = async (req, res) => {
       success: true,
       message: 'Delivery request accepted successfully!',
       data: {
-        assignment,
+        assignment: updatedAssignment,
         delivery,
       },
+      assignment: updatedAssignment,
+      delivery,
     });
   } catch (error) {
     console.error('Accept Request Error:', error);
@@ -336,38 +386,49 @@ const declineRequest = async (req, res) => {
     const { reason } = req.body;
     const partnerId = req.deliveryPartner._id;
 
-    const assignment = await DeliveryAssignment.findOne({
-      $or: [{ _id: assignmentId }, { assignmentId: assignmentId }],
-      deliveryPartner: partnerId,
-    });
+    const updatedAssignment = await DeliveryAssignment.findOneAndUpdate(
+      {
+        assignmentId: assignmentId,
+        deliveryPartner: partnerId,
+        status: 'requested',
+      },
+      {
+        $set: {
+          status: 'declined',
+          declinedAt: new Date(),
+          declineReason: reason || 'Rider currently unavailable for this route',
+        },
+      },
+      { returnDocument: 'after' }
+    );
 
-    if (!assignment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Delivery assignment request not found',
+    if (!updatedAssignment) {
+      const existing = await DeliveryAssignment.findOne({
+        assignmentId: assignmentId,
+        deliveryPartner: partnerId,
       });
-    }
 
-    if (assignment.status !== 'requested') {
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          message: 'Delivery assignment request not found',
+        });
+      }
+
       return res.status(400).json({
         success: false,
-        message: `This assignment has already been ${assignment.status}`,
+        message: `This assignment has already been ${existing.status}`,
       });
     }
-
-    assignment.status = 'declined';
-    assignment.declinedAt = new Date();
-    assignment.declineReason = reason || 'Rider currently unavailable for this route';
-    await assignment.save();
 
     // Revert SellerOrder to ready_for_pickup so seller can reassign
     try {
       await SellerOrder.findOneAndUpdate(
         {
           $or: [
-            { orderNumber: assignment.orderNumber },
-            { subOrderNumber: assignment.orderNumber },
-            { order: assignment.order },
+            { orderNumber: updatedAssignment.orderNumber },
+            { subOrderNumber: updatedAssignment.orderNumber },
+            { order: updatedAssignment.order },
           ],
         },
         {
@@ -384,24 +445,25 @@ const declineRequest = async (req, res) => {
       console.warn('Revert SellerOrder on decline error:', soErr?.message);
     }
 
-    // Decrement current active deliveries if it was incremented
+    // Safely sync partner active count and remove from assignedTasks
+    await syncPartnerActiveCount(partnerId);
     await DeliveryPartner.findByIdAndUpdate(partnerId, {
-      $inc: { currentActiveDeliveries: -1 },
-      $pull: { assignedTasks: { orderNumber: assignment.orderNumber } },
+      $pull: { assignedTasks: { orderNumber: updatedAssignment.orderNumber } },
     }).catch(() => {});
 
     // Notify seller so they can reassign immediately
-    emitToSeller(assignment.seller, 'delivery:assignment_declined', {
-      assignmentId: assignment.assignmentId,
-      orderNumber: assignment.orderNumber,
-      reason: assignment.declineReason,
-      declinedAt: assignment.declinedAt,
+    emitToSeller(updatedAssignment.seller, 'delivery:assignment_declined', {
+      assignmentId: updatedAssignment.assignmentId,
+      orderNumber: updatedAssignment.orderNumber,
+      reason: updatedAssignment.declineReason,
+      declinedAt: updatedAssignment.declinedAt,
     });
 
     return res.status(200).json({
       success: true,
       message: 'Delivery request declined. Notified store.',
-      data: { assignment },
+      data: { assignment: updatedAssignment },
+      assignment: updatedAssignment,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -416,20 +478,13 @@ const getActiveDeliveries = async (req, res) => {
   try {
     const partnerId = req.deliveryPartner._id;
 
-    let deliveries = await Delivery.find({
+    // Delivery collection is the reliable single source of truth for ongoing active deliveries
+    const deliveries = await Delivery.find({
       deliveryPartner: partnerId,
       status: {
-        $in: ['assigned', 'accepted', 'reached_pickup', 'picked_up', 'out_for_delivery', 'reached_customer'],
+        $in: ACTIVE_DELIVERY_STATUSES,
       },
     }).sort({ updatedAt: -1 });
-
-    // Fallback: If no active delivery exists in DB, check partner's assignedTasks
-    if (deliveries.length === 0) {
-      const partner = await DeliveryPartner.findById(partnerId);
-      if (partner?.assignedTasks?.length > 0) {
-        deliveries = partner.assignedTasks.filter((t) => t.status !== 'delivered');
-      }
-    }
 
     return res.status(200).json({
       success: true,
@@ -588,17 +643,36 @@ const verifyPickupOtp = async (req, res) => {
  */
 const outForDelivery = async (req, res) => {
   try {
-    const { deliveryId } = req.params;
-    const delivery = await Delivery.findOne({
-      $or: [{ _id: deliveryId }, { deliveryNumber: deliveryId }],
-      deliveryPartner: req.deliveryPartner._id,
+    const { deliveryId, taskId } = req.params;
+    const targetId = deliveryId || taskId;
+    const partnerId = req.deliveryPartner._id;
+
+    let delivery = await Delivery.findOne({
+      $or: [{ _id: targetId }, { deliveryNumber: targetId }],
+      deliveryPartner: partnerId,
     });
 
     if (!delivery) {
+      // Check legacy assignedTasks
+      const partner = await DeliveryPartner.findById(partnerId);
+      const subtask = partner?.assignedTasks?.id(targetId);
+      if (subtask) {
+        subtask.status = 'out_for_delivery';
+        await partner.save();
+        if (subtask.order) {
+          await Order.findByIdAndUpdate(subtask.order, { orderStatus: 'out_for_delivery' });
+        }
+        return res.status(200).json({
+          success: true,
+          message: 'Status updated: Out for Delivery',
+          data: { task: subtask },
+        });
+      }
       return res.status(404).json({ success: false, message: 'Delivery not found' });
     }
 
     delivery.status = 'out_for_delivery';
+    delivery.outForDeliveryAt = new Date();
     delivery.timeline.push({
       status: 'out_for_delivery',
       title: 'Out for Doorstep Delivery',
@@ -608,7 +682,14 @@ const outForDelivery = async (req, res) => {
     await delivery.save();
 
     // Synchronize SellerOrder and Parent Order
+    let updatedOrder = null;
     try {
+      updatedOrder = await Order.findOneAndUpdate(
+        { $or: [{ _id: delivery.order }, { orderNumber: delivery.orderNumber }] },
+        { $set: { orderStatus: 'out_for_delivery' } },
+        { new: true }
+      );
+
       await SellerOrder.updateMany(
         { $or: [{ order: delivery.order }, { orderNumber: delivery.orderNumber }] },
         {
@@ -624,6 +705,23 @@ const outForDelivery = async (req, res) => {
       console.warn('Out for delivery sync warning:', syncErr?.message);
     }
 
+    // Emit Real-Time Tracking & Seller Sockets
+    emitToTrackingRoom(delivery.orderNumber, 'status_updated', {
+      orderStatus: 'out_for_delivery',
+      status: 'out_for_delivery',
+      deliveryPartner: {
+        name: req.deliveryPartner.name,
+        phone: req.deliveryPartner.phone,
+        vehicleNumber: req.deliveryPartner.vehicleNumber,
+      },
+    });
+
+    if (updatedOrder) {
+      try {
+        emitOrderStatusUpdated(updatedOrder);
+      } catch (e) {}
+    }
+
     emitToSeller(delivery.seller, 'delivery:out_for_delivery', {
       deliveryNumber: delivery.deliveryNumber,
       orderNumber: delivery.orderNumber,
@@ -632,9 +730,149 @@ const outForDelivery = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Status updated: Out for Delivery',
-      data: { delivery },
+      data: { delivery, task: delivery },
+      task: delivery,
     });
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Update Delivery Task Status (Unified for Delivery collection & assignedTasks)
+ * PATCH /api/v1/delivery/tasks/:taskId/status
+ */
+const updateTaskStatus = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body; // 'picked_up' | 'out_for_delivery' | 'reached_customer'
+    const partnerId = req.deliveryPartner._id;
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'Status is required' });
+    }
+
+    if (status === 'out_for_delivery') {
+      return await outForDelivery(req, res);
+    }
+
+    // 1. Check Delivery collection first
+    let delivery = await Delivery.findOne({
+      $or: [{ _id: taskId }, { deliveryNumber: taskId }],
+      deliveryPartner: partnerId,
+    });
+
+    if (delivery) {
+      if (status === 'picked_up') {
+        delivery.status = 'picked_up';
+        delivery.pickedUpAt = new Date();
+        delivery.pickupOtpVerified = true;
+        delivery.timeline.push({
+          status: 'picked_up',
+          title: 'Package Picked Up from Store',
+          notes: `${req.deliveryPartner.name} received package from merchant hub.`,
+          timestamp: new Date(),
+        });
+        await delivery.save();
+
+        const updatedOrder = await Order.findOneAndUpdate(
+          { $or: [{ _id: delivery.order }, { orderNumber: delivery.orderNumber }] },
+          { $set: { orderStatus: 'shipped' } },
+          { new: true }
+        );
+
+        await SellerOrder.updateMany(
+          { $or: [{ order: delivery.order }, { orderNumber: delivery.orderNumber }] },
+          { $set: { status: 'shipped', shippedAt: new Date() } }
+        );
+
+        try {
+          await syncParentOrderStatus(delivery.order || delivery.orderNumber);
+        } catch (syncErr) {}
+
+        emitToTrackingRoom(delivery.orderNumber, 'status_updated', {
+          orderStatus: 'shipped',
+          status: 'shipped',
+        });
+        if (updatedOrder) {
+          try {
+            emitOrderStatusUpdated(updatedOrder);
+          } catch (e) {}
+        }
+        emitToSeller(delivery.seller, 'delivery:picked_up', {
+          deliveryNumber: delivery.deliveryNumber,
+          orderNumber: delivery.orderNumber,
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Status updated: Picked Up',
+          data: { delivery, task: delivery },
+          task: delivery,
+        });
+      }
+
+      if (status === 'reached_customer') {
+        delivery.status = 'reached_customer';
+        delivery.timeline.push({
+          status: 'reached_customer',
+          title: 'Reached Customer Doorstep',
+          notes: 'Rider reached customer doorstep. Ready for OTP verification.',
+          timestamp: new Date(),
+        });
+        await delivery.save();
+
+        return res.status(200).json({
+          success: true,
+          message: 'Status updated: Reached Customer',
+          data: { delivery, task: delivery },
+          task: delivery,
+        });
+      }
+
+      delivery.status = status;
+      delivery.timeline.push({
+        status,
+        title: `Status updated to ${status.replace('_', ' ')}`,
+        timestamp: new Date(),
+      });
+      await delivery.save();
+
+      return res.status(200).json({
+        success: true,
+        message: `Task status updated to ${status}`,
+        data: { delivery, task: delivery },
+        task: delivery,
+      });
+    }
+
+    // 2. Legacy fallback to partner.assignedTasks
+    const partner = await DeliveryPartner.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Partner not found' });
+    }
+    const task = partner.assignedTasks.id(taskId);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Delivery task not found' });
+    }
+
+    task.status = status;
+    await partner.save();
+
+    if (task.order) {
+      await Order.findByIdAndUpdate(task.order, {
+        orderStatus: status === 'out_for_delivery' ? 'out_for_delivery' : 'processing',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Task marked as ${status}`,
+      data: { task },
+      task,
+    });
+  } catch (error) {
+    console.error('Update Task Status Error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -696,11 +934,28 @@ const verifyDeliveryOtp = async (req, res) => {
       deliveryPartner: partnerId,
     });
 
+    // Idempotency: Prevent duplicate completion and duplicate counter decrement
+    if (delivery && delivery.status === 'delivered') {
+      return res.status(200).json({
+        success: true,
+        message: 'Delivery is already completed and verified.',
+        data: { delivery },
+      });
+    }
+
     // If not found in Delivery model, check subdocument assignedTasks in DeliveryPartner
     if (!delivery) {
       const partner = await DeliveryPartner.findById(partnerId);
       const subtask = partner.assignedTasks.id(targetId);
       if (subtask) {
+        if (subtask.status === 'delivered') {
+          return res.status(200).json({
+            success: true,
+            message: 'Task is already completed.',
+            data: { task: subtask },
+          });
+        }
+
         if (subtask.deliveryOtp !== otp.trim() && otp.trim() !== '4521' && otp.trim() !== '1234') {
           return res.status(400).json({
             success: false,
@@ -716,6 +971,8 @@ const verifyDeliveryOtp = async (req, res) => {
         partner.totalDeliveriesCompleted += 1;
         await partner.save();
 
+        await syncPartnerActiveCount(partnerId);
+
         return res.status(200).json({
           success: true,
           message: 'Delivery verified and completed! Earnings credited.',
@@ -726,8 +983,22 @@ const verifyDeliveryOtp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery record not found' });
     }
 
-    // Verify OTP against stored deliveryOtp or demo master code '4521' / '1234'
-    if (delivery.deliveryOtp !== otp.trim() && otp.trim() !== '4521' && otp.trim() !== '1234') {
+    // Verify OTP against stored deliveryOtp, linked order deliveryOtp, or demo master code '4521' / '1234'
+    const allowedOtps = [
+      (delivery.deliveryOtp || '').trim(),
+      '4521',
+      '1234',
+    ];
+    if (delivery.order) {
+      try {
+        const parentOrder = await Order.findById(delivery.order);
+        if (parentOrder && parentOrder.deliveryOtp) {
+          allowedOtps.push(parentOrder.deliveryOtp.trim());
+        }
+      } catch (e) {}
+    }
+
+    if (!allowedOtps.filter(Boolean).includes(otp.trim())) {
       return res.status(400).json({
         success: false,
         message: 'Incorrect OTP. Please ask customer for the 4-digit verification code.',
@@ -767,14 +1038,20 @@ const verifyDeliveryOtp = async (req, res) => {
       description: `Delivery payout for Order #${delivery.orderNumber}`,
     });
 
-    // Update Partner Wallet
+    // Update Partner Wallet & safely reconcile active deliveries counter
+    const remainingActiveCount = await countActualActiveDeliveries(partnerId);
     await DeliveryPartner.findByIdAndUpdate(partnerId, {
       $inc: {
         'earnings.available': delivery.deliveryFee || 65,
         'earnings.totalEarned': delivery.deliveryFee || 65,
         'earnings.todayEarned': delivery.deliveryFee || 65,
         totalDeliveriesCompleted: 1,
-        currentActiveDeliveries: -1,
+      },
+      $set: {
+        currentActiveDeliveries: remainingActiveCount,
+      },
+      $pull: {
+        assignedTasks: { orderNumber: delivery.orderNumber },
       },
     });
 
@@ -837,6 +1114,11 @@ const verifyDeliveryOtp = async (req, res) => {
     }
 
     // Emit Real-Time Socket Events
+    emitToTrackingRoom(delivery.orderNumber, 'status_updated', {
+      orderStatus: 'Delivered',
+      status: 'Delivered',
+      deliveredAt: delivery.deliveredAt,
+    });
     emitToSeller(delivery.seller, 'delivery:delivered', {
       deliveryNumber: delivery.deliveryNumber,
       orderNumber: delivery.orderNumber,
@@ -876,6 +1158,14 @@ const reportDeliveryFailure = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery not found' });
     }
 
+    if (delivery.status === 'delivery_failed') {
+      return res.status(200).json({
+        success: true,
+        message: 'Delivery issue is already recorded.',
+        data: { delivery },
+      });
+    }
+
     delivery.status = 'delivery_failed';
     delivery.failureReason = reason || 'customer_unavailable';
     delivery.failureNotes = notes || 'Customer was not reachable at the doorstep.';
@@ -888,8 +1178,11 @@ const reportDeliveryFailure = async (req, res) => {
     });
     await delivery.save();
 
+    // Reconcile remaining active deliveries
+    const remainingActiveCount = await countActualActiveDeliveries(req.deliveryPartner._id);
     await DeliveryPartner.findByIdAndUpdate(req.deliveryPartner._id, {
-      $inc: { currentActiveDeliveries: -1 },
+      $set: { currentActiveDeliveries: remainingActiveCount },
+      $pull: { assignedTasks: { orderNumber: delivery.orderNumber } },
     });
 
     emitToSeller(delivery.seller, 'delivery:failed', {
@@ -1088,6 +1381,7 @@ module.exports = {
   reachedPickup,
   verifyPickupOtp,
   outForDelivery,
+  updateTaskStatus,
   reachedCustomer,
   verifyDeliveryOtp,
   reportDeliveryFailure,

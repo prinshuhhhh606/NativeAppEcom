@@ -45,9 +45,18 @@ api.interceptors.request.use(
       }
 
       // Default fallback if route-specific token not determined
-      if (!token) {
-        token = await secureStorage.getAccessToken();
-      }
+    // Select the correct token according to API route
+if (isAdminRoute) {
+  // Admin token already selected above
+} else if (isSellerRoute) {
+  // Seller token already selected above
+} else if (isDeliveryRoute) {
+  // Delivery token already selected above
+} else {
+  // Customer APIs must always use customer token.
+  // Never send delivery token to customer APIs.
+  token = await secureStorage.getCustomerToken();
+}
 
       if (token) {
         config.headers.Authorization = `Bearer ${token.trim()}`;

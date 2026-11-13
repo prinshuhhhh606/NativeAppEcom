@@ -2,6 +2,7 @@
  * Seller Delivery Assignment Controller
  * Enables multi-vendor sellers to assign delivery partners, monitor acceptance, and reassign
  */
+const mongoose = require('mongoose');
 const DeliveryPartner = require('../../models/DeliveryPartner');
 const DeliveryAssignment = require('../../models/DeliveryAssignment');
 const Delivery = require('../../models/Delivery');
@@ -9,6 +10,12 @@ const SellerOrder = require('../../models/SellerOrder');
 const Order = require('../../models/Order');
 const { emitToDeliveryPartner, emitToOrder } = require('../../sockets/socketManager');
 const { syncParentOrderStatus } = require('../../utils/orderSync');
+const {
+  ACTIVE_DELIVERY_STATUSES,
+  countActualActiveDeliveries,
+  syncPartnerActiveCount,
+  getPartnerCapacityInfo,
+} = require('../../utils/deliveryCapacityUtils');
 
 /**
  * Get Available Approved Delivery Partners for Seller
@@ -25,7 +32,7 @@ const getEligiblePartners = async (req, res) => {
     };
 
     let partners = await DeliveryPartner.find(query).select(
-      'name phone vehicleType vehicleNumber rating totalDeliveriesCompleted currentActiveDeliveries activeCapacity currentLocation'
+      'name phone vehicleType vehicleNumber rating totalDeliveriesCompleted currentActiveDeliveries activeCapacity currentLocation isAvailable availability kycStatus'
     );
 
     // If no online partners found in database, ensure demo delivery partner is available
@@ -43,29 +50,44 @@ const getEligiblePartners = async (req, res) => {
             isAvailable: true,
             rating: 4.85,
             totalDeliveriesCompleted: 248,
-            currentActiveDeliveries: 1,
+            currentActiveDeliveries: 0,
             activeCapacity: 4,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       partners = [demoRider];
     }
 
-    // Augment with estimated distance from seller store
-    const eligibleList = partners.map((p, idx) => ({
-      _id: p._id,
-      name: p.name,
-      phone: p.phone,
-      vehicleType: p.vehicleType,
-      vehicleNumber: p.vehicleNumber,
-      rating: p.rating,
-      totalDeliveries: p.totalDeliveriesCompleted,
-      activeTasks: p.currentActiveDeliveries || 0,
-      capacityAvailable: (p.activeCapacity || 3) - (p.currentActiveDeliveries || 0),
-      approxDistanceKm: Number((1.8 + idx * 1.2).toFixed(1)),
-      estimatedArrivalMin: 10 + idx * 5,
-    }));
+    // Compute actual capacity from genuine ongoing deliveries for each partner
+    const eligibleList = await Promise.all(
+      partners.map(async (p, idx) => {
+        const capacityInfo = await getPartnerCapacityInfo(p);
+
+        // Auto-heal stored currentActiveDeliveries if out-of-sync
+        if (p.currentActiveDeliveries !== capacityInfo.actualActive) {
+          DeliveryPartner.findByIdAndUpdate(p._id, {
+            $set: { currentActiveDeliveries: capacityInfo.actualActive },
+          }).catch(() => {});
+        }
+
+        return {
+          _id: p._id,
+          name: p.name,
+          phone: p.phone,
+          vehicleType: p.vehicleType,
+          vehicleNumber: p.vehicleNumber,
+          rating: p.rating,
+          totalDeliveries: p.totalDeliveriesCompleted,
+          activeTasks: capacityInfo.actualActive,
+          activeCapacity: capacityInfo.activeCapacity,
+          capacityAvailable: capacityInfo.capacityAvailable,
+          isAssignable: capacityInfo.isAssignable,
+          approxDistanceKm: Number((1.8 + idx * 1.2).toFixed(1)),
+          estimatedArrivalMin: 10 + idx * 5,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
@@ -95,9 +117,16 @@ const assignDeliveryPartner = async (req, res) => {
       });
     }
 
+    const mongoose = require('mongoose');
+    const isObjectId = mongoose.Types.ObjectId.isValid(orderId);
+
     // Find Order / SellerOrder
     let order = await SellerOrder.findOne({
-      $or: [{ _id: orderId }, { subOrderNumber: orderId }, { orderNumber: orderId }],
+      $or: [
+        ...(isObjectId ? [{ _id: orderId }] : []),
+        { subOrderNumber: orderId },
+        { orderNumber: orderId },
+      ],
       seller: sellerId,
     });
 
@@ -126,23 +155,72 @@ const assignDeliveryPartner = async (req, res) => {
       });
     }
 
+    if (partner.availability !== 'online' || partner.isAvailable === false) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery partner ${partner.name} is currently offline. Please choose an online partner.`,
+      });
+    }
+
+    // Check partner delivery capacity against genuine ongoing deliveries
+    const capacityInfo = await getPartnerCapacityInfo(partner);
+    if (capacityInfo.capacityAvailable <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery partner ${partner.name} has no available capacity (${capacityInfo.actualActive}/${capacityInfo.activeCapacity} active tasks). Please choose another rider.`,
+        data: {
+          partnerId: partner._id,
+          activeTasks: capacityInfo.actualActive,
+          activeCapacity: capacityInfo.activeCapacity,
+          capacityAvailable: 0,
+        },
+      });
+    }
+
+    // Auto-expire any stale past-deadline requested assignments for this order
+    await DeliveryAssignment.updateMany(
+      {
+        orderNumber: orderNum,
+        seller: sellerId,
+        status: 'requested',
+        responseDeadline: { $lte: new Date() },
+      },
+      { $set: { status: 'expired' } }
+    );
+
     // Check if active assignment already exists for this order
     const existingActive = await DeliveryAssignment.findOne({
       orderNumber: orderNum,
       seller: sellerId,
-      status: { $in: ['requested', 'accepted'] },
+      $or: [
+        { status: 'accepted' },
+        { status: 'requested', responseDeadline: { $gt: new Date() } },
+      ],
     });
 
     if (existingActive) {
       return res.status(400).json({
         success: false,
-        message: `Order #${orderNum} already has an active assignment (${existingActive.status}) with rider ${existingActive.deliveryPartnerName}`,
+        message: `Order #${orderNum} already has an active assignment (${existingActive.status}) with rider ${existingActive.deliveryPartnerName || 'assigned'}`,
+      });
+    }
+
+    // Check if active delivery already exists for this order
+    const existingActiveDelivery = await Delivery.findOne({
+      orderNumber: orderNum,
+      status: { $in: ACTIVE_DELIVERY_STATUSES },
+    });
+
+    if (existingActiveDelivery) {
+      return res.status(400).json({
+        success: false,
+        message: `Order #${orderNum} already has an active ongoing delivery (${existingActiveDelivery.status})`,
       });
     }
 
     // Create Assignment
     const assignmentId = `ASGN-${Math.floor(100000 + Math.random() * 900000)}`;
-    const deadline = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry timer
+    const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour acceptance window for dispatch request
 
     const assignment = await DeliveryAssignment.create({
       assignmentId,
@@ -221,29 +299,8 @@ const assignDeliveryPartner = async (req, res) => {
       console.warn('Parent order update warning:', parentErr?.message);
     }
 
-    // Add to Partner Active Task list
-    try {
-      await DeliveryPartner.findByIdAndUpdate(partner._id, {
-        $inc: { currentActiveDeliveries: 1 },
-        $push: {
-          assignedTasks: {
-            order: order ? order.order : new (require('mongoose').Types.ObjectId)(),
-            orderNumber: orderNum,
-            customerName: customerName,
-            customerPhone: customerPhone,
-            deliveryAddress: assignment.deliveryAddress,
-            paymentMethod: assignment.paymentMethod,
-            amountToCollect: assignment.amountToCollect,
-            deliveryFee: assignment.deliveryFee,
-            status: 'assigned',
-            pickupOtp: '7821',
-            deliveryOtp: '4521',
-          },
-        },
-      });
-    } catch (taskErr) {
-      console.warn('Partner task push warning:', taskErr?.message);
-    }
+    // Note: Active delivery count is incremented ONLY upon partner acceptance,
+    // not upon assignment request dispatch. Partner capacity remains unaffected until accepted.
 
     // Notify Rider via Real-Time Socket.IO
     emitToDeliveryPartner(partner._id, 'delivery:new_assignment', {
@@ -293,8 +350,13 @@ const getOrderAssignments = async (req, res) => {
     const { orderId } = req.params;
     const sellerId = req.seller._id;
 
+    const isObjectId = mongoose.Types.ObjectId.isValid(orderId);
     const assignment = await DeliveryAssignment.findOne({
-      $or: [{ orderNumber: orderId }, { _id: orderId }, { assignmentId: orderId }],
+      $or: [
+        ...(isObjectId ? [{ _id: orderId }] : []),
+        { orderNumber: orderId },
+        { assignmentId: orderId },
+      ],
       seller: sellerId,
     })
       .populate('deliveryPartner', 'name phone vehicleType vehicleNumber rating currentLocation')
@@ -327,8 +389,12 @@ const cancelAssignment = async (req, res) => {
     const { assignmentId } = req.params;
     const sellerId = req.seller._id;
 
+    const isObjectId = mongoose.Types.ObjectId.isValid(assignmentId);
     const assignment = await DeliveryAssignment.findOne({
-      $or: [{ _id: assignmentId }, { assignmentId }],
+      $or: [
+        ...(isObjectId ? [{ _id: assignmentId }] : []),
+        { assignmentId },
+      ],
       seller: sellerId,
     });
 
@@ -336,9 +402,46 @@ const cancelAssignment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Assignment not found' });
     }
 
+    if (assignment.status === 'cancelled') {
+      return res.status(200).json({
+        success: true,
+        message: 'Assignment is already cancelled',
+        data: { assignment },
+      });
+    }
+
+    // Check if an actual Delivery record was created
+    const linkedDelivery = await Delivery.findOne({ assignment: assignment._id });
+    if (linkedDelivery) {
+      if (linkedDelivery.status === 'delivered') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot cancel assignment: delivery is already completed.',
+        });
+      }
+      if (ACTIVE_DELIVERY_STATUSES.includes(linkedDelivery.status)) {
+        linkedDelivery.status = 'cancelled';
+        linkedDelivery.timeline.push({
+          status: 'cancelled',
+          title: 'Delivery Cancelled by Seller',
+          notes: 'Seller cancelled the delivery assignment.',
+          timestamp: new Date(),
+        });
+        await linkedDelivery.save();
+      }
+    }
+
     assignment.status = 'cancelled';
     assignment.cancelledAt = new Date();
     await assignment.save();
+
+    // Reconcile delivery partner active deliveries counter and clean up legacy subtasks
+    if (assignment.deliveryPartner) {
+      await syncPartnerActiveCount(assignment.deliveryPartner);
+      await DeliveryPartner.findByIdAndUpdate(assignment.deliveryPartner, {
+        $pull: { assignedTasks: { orderNumber: assignment.orderNumber } },
+      }).catch(() => {});
+    }
 
     // Reset SellerOrder back to ready_for_pickup
     try {
@@ -390,8 +493,12 @@ const reassignPartner = async (req, res) => {
     const { newDeliveryPartnerId } = req.body;
     const sellerId = req.seller._id;
 
+    const isObjectId = mongoose.Types.ObjectId.isValid(assignmentId);
     const oldAssignment = await DeliveryAssignment.findOne({
-      $or: [{ _id: assignmentId }, { assignmentId }],
+      $or: [
+        ...(isObjectId ? [{ _id: assignmentId }] : []),
+        { assignmentId },
+      ],
       seller: sellerId,
     });
 
@@ -399,9 +506,24 @@ const reassignPartner = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Existing assignment not found' });
     }
 
+    // Cancel any active Delivery on the old assignment
+    const linkedDelivery = await Delivery.findOne({ assignment: oldAssignment._id });
+    if (linkedDelivery && ACTIVE_DELIVERY_STATUSES.includes(linkedDelivery.status)) {
+      linkedDelivery.status = 'cancelled';
+      await linkedDelivery.save();
+    }
+
     oldAssignment.status = 'reassigned';
     oldAssignment.reassignedAt = new Date();
     await oldAssignment.save();
+
+    // Reconcile old partner's capacity
+    if (oldAssignment.deliveryPartner) {
+      await syncPartnerActiveCount(oldAssignment.deliveryPartner);
+      await DeliveryPartner.findByIdAndUpdate(oldAssignment.deliveryPartner, {
+        $pull: { assignedTasks: { orderNumber: oldAssignment.orderNumber } },
+      }).catch(() => {});
+    }
 
     req.body.orderId = oldAssignment.orderNumber;
     req.body.deliveryPartnerId = newDeliveryPartnerId;

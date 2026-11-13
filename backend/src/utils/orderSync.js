@@ -118,8 +118,9 @@ function buildTrackingTimeline(order, currentStatusNorm, partnerName = '') {
   const currentRank = STATUS_RANK[currentStatusNorm] !== undefined ? STATUS_RANK[currentStatusNorm] : 0;
 
   // Determine timestamps for each milestone
+  const confirmedTime = order.acceptedAt || order.confirmedAt || order.createdAt;
   const milestoneTimes = {
-    confirmed: order.acceptedAt ? formatTime(order.acceptedAt) : currentRank >= 1 ? 'Confirmed' : 'Pending',
+    confirmed: confirmedTime ? formatTime(confirmedTime) : currentRank >= 1 ? 'Confirmed' : 'Pending',
     processing: order.preparingAt ? formatTime(order.preparingAt) : currentRank >= 2 ? 'In Progress' : 'Pending',
     packed: order.readyForPickupAt || order.packedAt ? formatTime(order.readyForPickupAt || order.packedAt) : currentRank >= 3 ? 'Packed' : 'Pending',
     shipped: order.shippedAt ? formatTime(order.shippedAt) : currentRank >= 4 ? 'Shipped' : 'Pending',
@@ -130,20 +131,27 @@ function buildTrackingTimeline(order, currentStatusNorm, partnerName = '') {
   };
 
   return STANDARD_MILESTONES.map((m) => {
-    // A milestone is completed only if currentRank is >= its rank AND currentRank is at least 1
-    // This prevents pending orders (rank 0) from showing any milestone as completed
+    // A milestone is completed only if currentRank is >= its rank AND currentRank is at least 1.
+    // Pending orders (rank 0) should not display future steps as active or completed.
     const completed = currentRank >= 1 && currentRank >= m.rank;
-    const isCurrent = currentRank === m.rank;
+    const isCurrent = currentRank >= 1 && currentRank === m.rank;
     let desc = m.description;
     if (m.key === 'shipped' && partnerName) {
       desc = `Handed over to ${partnerName}`;
+    }
+
+    let time = '';
+    if (completed) {
+      time = milestoneTimes[m.key] || 'Completed';
+    } else if (isCurrent) {
+      time = m.key === 'confirmed' ? 'Confirmed' : 'In Progress';
     }
 
     return {
       status: m.status,
       title: m.title,
       description: desc,
-      time: completed ? (milestoneTimes[m.key] || 'Completed') : 'Pending',
+      time,
       completed,
       isCurrent,
       rank: m.rank,
@@ -187,8 +195,8 @@ async function syncParentOrderStatus(orderOrId) {
         }
       }
     } else if (orderOrId && orderOrId._id) {
-      parentOrder = orderOrId;
-    }
+  parentOrder = await Order.findById(orderOrId._id);
+}
 
     if (!parentOrder) return null;
 
@@ -214,13 +222,33 @@ async function syncParentOrderStatus(orderOrId) {
         derivedStatus = 'delivered';
       } else {
         // Collect all active statuses across sub-orders & delivery
-        const activeStatuses = subOrders
-          .map((so) => (so.status || '').toLowerCase())
-          .filter((s) => !['cancelled', 'rejected'].includes(s));
+      // Collect all active statuses across sub-orders, delivery and parent
+const activeStatuses = subOrders
+  .map((so) =>
+    String(so.status || '').trim().toLowerCase()
+      .replace(/[\s-]+/g, '_')
+  )
+  .filter((s) => !['cancelled', 'rejected'].includes(s));
 
-        if (delivery?.status) {
-          activeStatuses.push(delivery.status.toLowerCase());
-        }
+if (delivery?.status) {
+  activeStatuses.push(
+    String(delivery.status).trim().toLowerCase()
+      .replace(/[\s-]+/g, '_')
+  );
+}
+
+// Include existing parent status so a confirmed parent
+// is not downgraded because a SellerOrder is still pending.
+const parentStatusNorm = String(
+  parentOrder.orderStatus || ''
+).trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+if (
+  parentStatusNorm &&
+  !['pending', 'new', 'cancelled', 'rejected'].includes(parentStatusNorm)
+) {
+  activeStatuses.push(parentStatusNorm);
+}
 
         // Find highest progression milestone
         let maxRank = 0;
@@ -264,7 +292,26 @@ async function syncParentOrderStatus(orderOrId) {
       derivedStatus = currentRankVal > 0 ? currentNorm : 'pending';
     }
 
-    parentOrder.orderStatus = derivedStatus;
+    const existingParentStatus = String(
+  parentOrder.orderStatus || ''
+).toLowerCase();
+
+const existingParentRank =
+  STATUS_RANK[existingParentStatus] ?? 0;
+
+const calculatedRank =
+  STATUS_RANK[derivedStatus] ?? 0;
+
+if (['cancelled', 'rejected'].includes(existingParentStatus)) {
+  derivedStatus = existingParentStatus;
+} else if (
+  existingParentRank > calculatedRank &&
+  existingParentRank > 0
+) {
+  derivedStatus = existingParentStatus;
+}
+
+parentOrder.orderStatus = derivedStatus;
 
     // Collect newest timestamps from sub-orders / delivery
     const now = new Date();
@@ -335,7 +382,48 @@ async function syncParentOrderStatus(orderOrId) {
       completed: t.completed,
     }));
 
-    await parentOrder.save({ validateBeforeSave: false });
+    const syncFields = {
+  orderStatus: derivedStatus,
+  trackingTimeline: parentOrder.trackingTimeline,
+  acceptedAt: parentOrder.acceptedAt,
+  preparingAt: parentOrder.preparingAt,
+  readyForPickupAt: parentOrder.readyForPickupAt,
+  pickedUpAt: parentOrder.pickedUpAt,
+  shippedAt: parentOrder.shippedAt,
+  inTransitAt: parentOrder.inTransitAt,
+  outForDeliveryAt: parentOrder.outForDeliveryAt,
+  deliveredAt: parentOrder.deliveredAt,
+  deliveryPartner: parentOrder.deliveryPartner,
+  deliveryPartnerName: parentOrder.deliveryPartnerName,
+  deliveryPartnerPhone: parentOrder.deliveryPartnerPhone,
+  deliveryPartnerVehicle: parentOrder.deliveryPartnerVehicle,
+  courierPartner: parentOrder.courierPartner,
+  trackingNumber: parentOrder.trackingNumber,
+  paymentStatus: parentOrder.paymentStatus,
+};
+
+Object.keys(syncFields).forEach((key) => {
+  if (syncFields[key] === undefined) {
+    delete syncFields[key];
+  }
+});
+
+const updateResult = await Order.updateOne(
+  { _id: parentOrder._id },
+  { $set: syncFields },
+  { runValidators: false }
+);
+
+if (updateResult.matchedCount === 0) {
+  console.warn('[orderSync] Parent order not found during atomic update');
+  return null;
+}
+
+parentOrder = await Order.findById(parentOrder._id);
+
+if (!parentOrder) {
+  return null;
+}
 
     // Real-Time Socket.IO Broadcast to all interested subscribers
     try {

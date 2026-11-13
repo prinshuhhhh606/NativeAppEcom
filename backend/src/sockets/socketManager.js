@@ -154,7 +154,11 @@ const initSocket = (httpServer) => {
         const { orderId, deliveryId, latitude, longitude, heading = 0, speed = 0 } = data || {};
         if (!latitude || !longitude) return;
 
-        const partnerId = socket.user?.id || data?.partnerId;
+      if (socket.user?.role !== 'delivery' && socket.user?.role !== 'delivery_partner') {
+  return;
+}
+
+const partnerId = socket.user.id;
 
         // Update Partner Document
         if (partnerId) {
@@ -325,6 +329,16 @@ const emitToOrder = (orderId, event, payload) => {
   }
 };
 
+
+// Emit events specifically to order tracking rooms
+const emitToTrackingRoom = (orderId, event, payload) => {
+  if (!io || !orderId) return;
+
+  io.to(`order:${orderId}`).emit(event, payload);
+  io.to(`tracking_${orderId}`).emit(event, payload);
+};
+
+
 const emitToCustomer = (userId, event, payload) => {
   if (io && userId) {
     io.to(`user:${userId}`).emit(event, payload);
@@ -438,10 +452,12 @@ const emitRefundUpdated = (refund) => {
   });
 };
 
+
 module.exports = {
   initSocket,
   getIO,
   emitToOrder,
+  emitToTrackingRoom,
   emitToCustomer,
   emitToSeller,
   emitToDeliveryPartner,
@@ -454,3 +470,4 @@ module.exports = {
   emitReturnRequested,
   emitRefundUpdated,
 };
+

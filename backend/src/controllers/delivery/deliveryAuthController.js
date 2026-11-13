@@ -3,6 +3,7 @@
  */
 const DeliveryPartner = require('../../models/DeliveryPartner');
 const { generateAccessToken } = require('../../utils/generateToken');
+const { countActualActiveDeliveries } = require('../../utils/deliveryCapacityUtils');
 
 const generateToken = (partnerId) => {
   return generateAccessToken(partnerId, 'delivery', '30d');
@@ -109,6 +110,8 @@ const register = async (req, res) => {
           kycStatus: partner.kycStatus,
           availability: partner.availability,
           earnings: partner.earnings,
+          role: 'delivery',
+          isDelivery: true,
         },
         token,
       },
@@ -168,6 +171,7 @@ const login = async (req, res) => {
     }
 
     const token = generateToken(partner._id);
+    const actualActive = await countActualActiveDeliveries(partner._id);
 
     return res.status(200).json({
       success: true,
@@ -187,8 +191,11 @@ const login = async (req, res) => {
           currentLocation: partner.currentLocation,
           rating: partner.rating,
           earnings: partner.earnings,
-          activeCapacity: partner.activeCapacity,
-          currentActiveDeliveries: partner.currentActiveDeliveries,
+          activeCapacity: partner.activeCapacity || 3,
+          currentActiveDeliveries: actualActive,
+          capacityAvailable: Math.max(0, (partner.activeCapacity || 3) - actualActive),
+          role: 'delivery',
+          isDelivery: true,
         },
         accessToken: token,
         token,
@@ -280,9 +287,14 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery partner not found' });
     }
 
+    const partnerObj = partner.toObject ? partner.toObject() : partner;
+    partnerObj.role = 'delivery';
+    partnerObj.isDelivery = true;
+
     return res.status(200).json({
       success: true,
-      data: { partner },
+      data: { partner: partnerObj },
+      partner: partnerObj,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

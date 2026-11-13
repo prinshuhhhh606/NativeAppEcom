@@ -1,199 +1,535 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
 import { Alert, Vibration } from 'react-native';
+
 import { deliveryService } from '../services/deliveryService';
 import { socketService } from '../services/socketService';
 import { useAuth } from './AuthContext';
 
-export const DeliveryContext = createContext();
+export const DeliveryContext = createContext(null);
+
+// Normalize API response.
+// api.js response interceptor already returns response.data.
+const getPayload = (response) => {
+  if (!response || typeof response !== 'object') {
+    return {};
+  }
+
+  return response.data &&
+    typeof response.data === 'object'
+    ? response.data
+    : response;
+};
+
+const getErrorMessage = (error, fallback) => {
+  return (
+    error?.message ||
+    error?.response?.data?.message ||
+    fallback
+  );
+};
+
+const getAssignmentId = (item) => {
+  return String(
+    item?.assignmentId ||
+    item?._id ||
+    item?.id ||
+    ''
+  );
+};
 
 export const DeliveryProvider = ({ children }) => {
   const { partner, isAuthenticated, isApproved } = useAuth();
 
-  const [isOnline, setIsOnline] = useState(partner?.availability === 'online' || true);
+  const [isOnline, setIsOnline] = useState(
+    partner?.availability === 'online'
+  );
+
   const [requests, setRequests] = useState([]);
   const [activeDeliveries, setActiveDeliveries] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Sync state when partner data changes
+  // Sync availability with authenticated partner.
   useEffect(() => {
     if (partner) {
       setIsOnline(partner.availability === 'online');
+    } else {
+      setIsOnline(false);
     }
   }, [partner]);
 
-  // Load operational data when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchOperationsData();
-
-      // Listen for real-time delivery assignments
-      socketService.onNewAssignment((data) => {
-        try {
-          Vibration.vibrate([0, 500, 200, 500]);
-        } catch (e) {}
-        Alert.alert(
-          '🔔 New Delivery Request!',
-          `Store ${data.storeName || 'Vendor'} assigned Order #${data.orderNumber} to you. Fee: ₹${data.deliveryFee || 65}`,
-          [{ text: 'View Request', onPress: () => fetchRequests() }]
-        );
-        fetchRequests();
-      });
-
-      socketService.onCancelled((data) => {
-        Alert.alert('Notice', `Delivery request #${data.orderNumber} was cancelled by store.`);
-        fetchRequests();
-      });
-    }
-  }, [isAuthenticated]);
-
-  const fetchOperationsData = useCallback(async () => {
-    setLoading(true);
+  // Fetch dashboard.
+  const fetchDashboard = useCallback(async () => {
     try {
-      await Promise.all([fetchDashboard(), fetchRequests(), fetchActiveDeliveries()]);
-    } finally {
-      setLoading(false);
+      const response = await deliveryService.getDashboard();
+      const data = getPayload(response);
+
+      setDashboardData(
+        data.dashboard ||
+        data.stats ||
+        data
+      );
+
+      return data;
+    } catch (error) {
+      console.warn(
+        '[DeliveryContext] Dashboard fetch failed:',
+        getErrorMessage(error, 'Unknown error')
+      );
+
+      return null;
     }
   }, []);
 
-  const fetchDashboard = async () => {
+  // Fetch incoming requests.
+  const fetchRequests = useCallback(async () => {
     try {
-      const res = await deliveryService.getDashboard();
-      if (res.data) setDashboardData(res.data);
-    } catch (e) {
-      // ignore
-    }
-  };
+      const response = await deliveryService.getRequests();
+      const data = getPayload(response);
 
-  const fetchRequests = async () => {
+      const list =
+        data.requests ||
+        data.assignments ||
+        data.items ||
+        [];
+
+      setRequests(Array.isArray(list) ? list : []);
+
+      return list;
+    } catch (error) {
+      console.warn(
+        '[DeliveryContext] Requests fetch failed:',
+        getErrorMessage(error, 'Unknown error')
+      );
+
+      return [];
+    }
+  }, []);
+
+  // Fetch active deliveries.
+  const fetchActiveDeliveries = useCallback(async () => {
     try {
-      const res = await deliveryService.getRequests();
-      const list = res.data?.requests || res.requests || [];
-      setRequests(list);
-    } catch (e) {
-      // ignore
-    }
-  };
+      const response =
+        await deliveryService.getActiveDeliveries();
 
-  const fetchActiveDeliveries = async () => {
+      const data = getPayload(response);
+
+      const list =
+        data.deliveries ||
+        data.tasks ||
+        data.items ||
+        [];
+
+      setActiveDeliveries(
+        Array.isArray(list) ? list : []
+      );
+
+      return list;
+    } catch (error) {
+      console.warn(
+        '[DeliveryContext] Active deliveries fetch failed:',
+        getErrorMessage(error, 'Unknown error')
+      );
+
+      return [];
+    }
+  }, []);
+
+  // Fetch all operational data.
+  const fetchOperationsData = useCallback(async () => {
+    if (!isAuthenticated) return;
+
+    setLoading(true);
+
     try {
-      const res = await deliveryService.getActiveDeliveries();
-      const list = res.data?.deliveries || res.deliveries || res.tasks || [];
-      setActiveDeliveries(list);
-    } catch (e) {
-      // ignore
+      await Promise.all([
+        fetchDashboard(),
+        fetchRequests(),
+        fetchActiveDeliveries(),
+      ]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [
+    isAuthenticated,
+    fetchDashboard,
+    fetchRequests,
+    fetchActiveDeliveries,
+  ]);
 
-  // Toggle Availability
-  const toggleAvailability = async () => {
-    if (!isApproved && !isOnline) {
+  // Load data and register socket listeners.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setRequests([]);
+      setActiveDeliveries([]);
+      setDashboardData(null);
+      setLoading(false);
+      return undefined;
+    }
+
+    fetchOperationsData();
+
+    const handleNewAssignment = (eventData = {}) => {
+      console.log(
+        '[DeliveryContext] New assignment received:',
+        eventData
+      );
+
+      try {
+        Vibration.vibrate([0, 500, 200, 500]);
+      } catch (error) {
+        console.warn('Vibration unavailable:', error);
+      }
+
+      const data = getPayload(eventData);
+
+      Alert.alert(
+        'New Delivery Request!',
+        `Store: ${data.storeName || data.sellerStoreName || 'Vendor'}\nOrder: #${data.orderNumber || 'New Order'}\nDelivery Fee: ₹${data.deliveryFee || data.deliveryCharge || 65}`,
+        [
+          {
+            text: 'View Request',
+            onPress: () => {
+              fetchRequests();
+            },
+          },
+          {
+            text: 'Later',
+            style: 'cancel',
+          },
+        ]
+      );
+
+      fetchRequests();
+    };
+
+    const handleCancelled = (eventData = {}) => {
+      console.log(
+        '[DeliveryContext] Assignment cancelled:',
+        eventData
+      );
+
+      const data = getPayload(eventData);
+
+      const cancelledId = String(
+        data.assignmentId ||
+        data._id ||
+        data.id ||
+        ''
+      );
+
+      if (cancelledId) {
+        setRequests((previous) =>
+          previous.filter(
+            (item) => getAssignmentId(item) !== cancelledId
+          )
+        );
+      }
+
+      Alert.alert(
+        'Delivery Request Cancelled',
+        `Order #${data.orderNumber || ''} was cancelled by the store.`
+      );
+
+      fetchRequests();
+    };
+
+    const unsubscribeNewAssignment =
+      socketService.onNewAssignment(handleNewAssignment);
+
+    const unsubscribeCancelled =
+      socketService.onCancelled(handleCancelled);
+
+    return () => {
+      if (typeof unsubscribeNewAssignment === 'function') {
+        unsubscribeNewAssignment();
+      }
+
+      if (typeof unsubscribeCancelled === 'function') {
+        unsubscribeCancelled();
+      }
+    };
+  }, [
+    isAuthenticated,
+    fetchOperationsData,
+    fetchRequests,
+  ]);
+
+  // Toggle online/offline availability.
+  const toggleAvailability = useCallback(async () => {
+    const goingOnline = !isOnline;
+
+    if (goingOnline && !isApproved) {
       Alert.alert(
         'Approval Required',
-        'Your documents are under review. You will be able to go online once approved by Admin.'
+        'Your documents are under review. You can go online after Admin approval.'
       );
+
       return;
     }
 
-    const newTarget = isOnline ? 'offline' : 'online';
-    try {
-      await deliveryService.updateAvailability(newTarget);
-      setIsOnline(newTarget === 'online');
-      Alert.alert('Status Updated', `You are now ${newTarget.toUpperCase()}`);
-    } catch (e) {
-      Alert.alert('Error', e.message || 'Could not update availability');
-    }
-  };
+    const newStatus = goingOnline ? 'online' : 'offline';
 
-  // Accept incoming request
-  const acceptRequest = async (assignmentId) => {
     try {
-      const res = await deliveryService.acceptRequest(assignmentId);
-      Alert.alert('🎉 Delivery Accepted!', 'Head to the vendor store for package pickup.');
-      fetchRequests();
-      fetchActiveDeliveries();
-      return res;
-    } catch (e) {
-      Alert.alert('Acceptance Failed', e.message || 'Could not accept delivery request');
-      throw e;
-    }
-  };
+      await deliveryService.updateAvailability(newStatus);
 
-  // Decline incoming request
-  const declineRequest = async (assignmentId, reason) => {
-    try {
-      const res = await deliveryService.declineRequest(assignmentId, reason);
-      setRequests((prev) => prev.filter((r) => r.assignmentId !== assignmentId && r._id !== assignmentId));
-      return res;
-    } catch (e) {
-      Alert.alert('Decline Failed', e.message || 'Could not decline request');
-      throw e;
-    }
-  };
+      setIsOnline(goingOnline);
 
-  // Verify Pickup OTP
-  const verifyPickupOtp = async (deliveryId, otp) => {
-    try {
-      const res = await deliveryService.verifyPickupOtp(deliveryId, otp);
-      Alert.alert('✓ Pickup Verified', 'Package marked picked up. Proceed to customer doorstep.');
-      fetchActiveDeliveries();
-      return res;
-    } catch (e) {
-      Alert.alert('Pickup Verification Failed', e.message || 'Incorrect store pickup OTP');
-      throw e;
+      Alert.alert(
+        'Status Updated',
+        `You are now ${newStatus.toUpperCase()}`
+      );
+    } catch (error) {
+      Alert.alert(
+        'Availability Update Failed',
+        getErrorMessage(
+          error,
+          'Could not update availability'
+        )
+      );
     }
-  };
+  }, [isOnline, isApproved]);
 
-  // Verify Delivery OTP
-  const verifyDeliveryOtp = async (deliveryId, data) => {
-    try {
-      const res = await deliveryService.verifyDeliveryOtp(deliveryId, data);
-      Alert.alert('🎉 Order Delivered!', 'Customer verified OTP. Delivery earnings credited to your wallet.');
-      fetchActiveDeliveries();
-      fetchDashboard();
-      return res;
-    } catch (e) {
-      Alert.alert('Verification Failed', e.message || 'Incorrect customer delivery OTP');
-      throw e;
-    }
-  };
+  // Accept incoming delivery request.
+  const acceptRequest = useCallback(
+    async (assignmentId) => {
+      if (!assignmentId) {
+        throw new Error('Assignment ID is missing');
+      }
 
-  // Report Issue
-  const reportFailure = async (deliveryId, data) => {
-    try {
-      const res = await deliveryService.reportFailure(deliveryId, data);
-      Alert.alert('Issue Submitted', 'Dispatch team has been notified.');
-      fetchActiveDeliveries();
-      return res;
-    } catch (e) {
-      Alert.alert('Error', e.message || 'Could not report issue');
-      throw e;
-    }
+      try {
+        const response =
+          await deliveryService.acceptRequest(assignmentId);
+
+        // Wait until both lists are refreshed.
+        await Promise.all([
+          fetchRequests(),
+          fetchActiveDeliveries(),
+          fetchDashboard(),
+        ]);
+
+        Alert.alert(
+          'Delivery Accepted!',
+          'Head to the vendor store for package pickup.'
+        );
+
+        return response;
+      } catch (error) {
+        Alert.alert(
+          'Acceptance Failed',
+          getErrorMessage(
+            error,
+            'Could not accept delivery request'
+          )
+        );
+
+        throw error;
+      }
+    },
+    [
+      fetchRequests,
+      fetchActiveDeliveries,
+      fetchDashboard,
+    ]
+  );
+
+  // Decline incoming delivery request.
+  const declineRequest = useCallback(
+    async (assignmentId, reason) => {
+      if (!assignmentId) {
+        throw new Error('Assignment ID is missing');
+      }
+
+      try {
+        const response =
+          await deliveryService.declineRequest(
+            assignmentId,
+            reason
+          );
+
+        setRequests((previous) =>
+          previous.filter(
+            (item) =>
+              getAssignmentId(item) !== String(assignmentId)
+          )
+        );
+
+        await fetchRequests();
+
+        return response;
+      } catch (error) {
+        Alert.alert(
+          'Decline Failed',
+          getErrorMessage(
+            error,
+            'Could not decline delivery request'
+          )
+        );
+
+        throw error;
+      }
+    },
+    [fetchRequests]
+  );
+
+  // Verify pickup OTP.
+  const verifyPickupOtp = useCallback(
+    async (deliveryId, otp) => {
+      try {
+        const response =
+          await deliveryService.verifyPickupOtp(
+            deliveryId,
+            otp
+          );
+
+        await fetchActiveDeliveries();
+
+        Alert.alert(
+          'Pickup Verified',
+          'Package marked as picked up. Proceed to customer doorstep.'
+        );
+
+        return response;
+      } catch (error) {
+        Alert.alert(
+          'Pickup Verification Failed',
+          getErrorMessage(
+            error,
+            'Incorrect store pickup OTP'
+          )
+        );
+
+        throw error;
+      }
+    },
+    [fetchActiveDeliveries]
+  );
+
+  // Verify customer delivery OTP.
+  const verifyDeliveryOtp = useCallback(
+    async (deliveryId, data) => {
+      try {
+        const response =
+          await deliveryService.verifyDeliveryOtp(
+            deliveryId,
+            data
+          );
+
+        await Promise.all([
+          fetchActiveDeliveries(),
+          fetchDashboard(),
+        ]);
+
+        Alert.alert(
+          'Order Delivered!',
+          'Customer verified OTP. Delivery earnings have been updated.'
+        );
+
+        return response;
+      } catch (error) {
+        Alert.alert(
+          'Verification Failed',
+          getErrorMessage(
+            error,
+            'Incorrect customer delivery OTP'
+          )
+        );
+
+        throw error;
+      }
+    },
+    [
+      fetchActiveDeliveries,
+      fetchDashboard,
+    ]
+  );
+
+  // Report delivery failure.
+  const reportFailure = useCallback(
+    async (deliveryId, data) => {
+      try {
+        const response =
+          await deliveryService.reportFailure(
+            deliveryId,
+            data
+          );
+
+        await Promise.all([
+          fetchActiveDeliveries(),
+          fetchDashboard(),
+        ]);
+
+        Alert.alert(
+          'Issue Submitted',
+          'Dispatch team has been notified.'
+        );
+
+        return response;
+      } catch (error) {
+        Alert.alert(
+          'Issue Submission Failed',
+          getErrorMessage(
+            error,
+            'Could not report delivery issue'
+          )
+        );
+
+        throw error;
+      }
+    },
+    [
+      fetchActiveDeliveries,
+      fetchDashboard,
+    ]
+  );
+
+  const value = {
+    isOnline,
+    toggleAvailability,
+
+    requests,
+    activeDeliveries,
+    dashboardData,
+    loading,
+
+    fetchOperationsData,
+    fetchDashboard,
+    fetchRequests,
+    fetchActiveDeliveries,
+
+    acceptRequest,
+    declineRequest,
+
+    verifyPickupOtp,
+    verifyDeliveryOtp,
+    reportFailure,
   };
 
   return (
-    <DeliveryContext.Provider
-      value={{
-        isOnline,
-        toggleAvailability,
-        requests,
-        activeDeliveries,
-        dashboardData,
-        loading,
-        fetchOperationsData,
-        fetchRequests,
-        fetchActiveDeliveries,
-        acceptRequest,
-        declineRequest,
-        verifyPickupOtp,
-        verifyDeliveryOtp,
-        reportFailure,
-      }}>
+    <DeliveryContext.Provider value={value}>
       {children}
     </DeliveryContext.Provider>
   );
 };
 
-export const useDelivery = () => useContext(DeliveryContext);
-export default DeliveryContext;
+export const useDelivery = () => {
+  const context = useContext(DeliveryContext);
 
+  if (!context) {
+    throw new Error(
+      'useDelivery must be used inside DeliveryProvider'
+    );
+  }
+
+  return context;
+};
+
+export default DeliveryContext;

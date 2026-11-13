@@ -50,10 +50,16 @@ router.post('/deliveries/:deliveryId/reached-customer', protectDelivery, opsCont
 router.post('/deliveries/:deliveryId/verify-delivery-otp', protectDelivery, opsController.verifyDeliveryOtp);
 router.post('/deliveries/:deliveryId/failure', protectDelivery, opsController.reportDeliveryFailure);
 
-// Legacy task compatibility
+// Task / Delivery Compatibility Routes (works with both task & delivery identifiers)
 router.get('/tasks', protectDelivery, opsController.getActiveDeliveries);
-router.patch('/tasks/:taskId/status', protectDelivery, legacyDeliveryController.updateTaskStatus);
+router.patch('/tasks/:taskId/status', protectDelivery, opsController.updateTaskStatus);
+router.post('/tasks/:taskId/status', protectDelivery, opsController.updateTaskStatus);
 router.post('/tasks/:taskId/verify-otp', protectDelivery, opsController.verifyDeliveryOtp);
+router.post('/tasks/:taskId/verify-delivery-otp', protectDelivery, opsController.verifyDeliveryOtp);
+router.post('/tasks/:taskId/verify-pickup-otp', protectDelivery, opsController.verifyPickupOtp);
+router.post('/tasks/:taskId/out-for-delivery', protectDelivery, opsController.outForDelivery);
+router.post('/tasks/:taskId/reached-pickup', protectDelivery, opsController.reachedPickup);
+router.post('/tasks/:taskId/reached-customer', protectDelivery, opsController.reachedCustomer);
 
 // 7. GPS Location Updates
 router.post('/location', protectDelivery, opsController.updateLocation);

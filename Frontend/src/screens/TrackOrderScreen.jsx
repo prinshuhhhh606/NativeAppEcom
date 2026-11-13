@@ -503,10 +503,46 @@ export const TrackOrderScreen = ({ route, navigation }) => {
   const orderIdDisplay = order.orderId || order.orderNumber || targetOrderId || '';
   const courierPartnerDisplay = order.courierPartner || 'Bharat Bazaar Fleet Express';
   const trackingNumberDisplay = order.trackingNumber || '';
-  const currentStatusNorm = (order.orderStatus || order.status || 'pending').toLowerCase();
-  // Use !== undefined so that pending (rank 0) is not coerced to 1
-  const currentRank = STATUS_RANK[currentStatusNorm] !== undefined ? STATUS_RANK[currentStatusNorm] : 0;
-  const isPendingApproval = currentRank === 0; // Order placed, awaiting seller acceptance
+ 
+const normalizeOrderStatus = (status) =>
+  String(status || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+const orderStatusNorm = normalizeOrderStatus(order.orderStatus);
+const legacyStatusNorm = normalizeOrderStatus(order.status);
+
+const orderStatusRank = STATUS_RANK[orderStatusNorm];
+const legacyStatusRank = STATUS_RANK[legacyStatusNorm];
+
+// Cancelled / rejected should remain terminal
+const currentStatusNorm =
+  ['cancelled', 'rejected'].includes(orderStatusNorm)
+    ? orderStatusNorm
+    : orderStatusRank === undefined
+      ? (legacyStatusRank === undefined ? 'pending' : legacyStatusNorm)
+      : legacyStatusRank === undefined
+        ? orderStatusNorm
+        : orderStatusRank >= legacyStatusRank
+          ? orderStatusNorm
+          : legacyStatusNorm;
+
+const currentRank =
+  STATUS_RANK[currentStatusNorm] !== undefined
+    ? STATUS_RANK[currentStatusNorm]
+    : 0;
+
+const isPendingApproval = currentRank === 0;
+
+console.log('[TRACKING STATUS DEBUG]', {
+  orderId: order.orderId || order.orderNumber,
+  orderStatus: order.orderStatus,
+  legacyStatus: order.status,
+  selectedStatus: currentStatusNorm,
+  currentRank,
+});
+
 
   // Build canonical milestone journey
   const trackingSteps = CANONICAL_STEPS.map((step) => {
@@ -529,13 +565,15 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     const completed = currentRank >= 1 && currentRank >= step.rank;
     const isCurrent = !isPendingApproval && currentRank === step.rank;
 
-    let timeText = 'Pending';
-    if (backendStep?.time && backendStep.time !== 'Pending') {
+    let timeText = '';
+    if (backendStep?.time && backendStep.time !== 'Pending' && backendStep.time !== '') {
       timeText = backendStep.time;
     } else if (backendStep?.description && completed) {
       timeText = backendStep.description;
     } else if (completed) {
       timeText = step.defaultDesc;
+    } else if (isCurrent) {
+      timeText = step.status === 'Order Confirmed' ? 'Confirmed' : 'In Progress';
     }
 
     return {
@@ -750,8 +788,8 @@ export const TrackOrderScreen = ({ route, navigation }) => {
                     style={[
                       styles.circle,
                       step.completed && styles.circleCompleted,
-                      step.isCurrent && !step.completed && styles.circleCurrent,
-                      step.isCurrent && step.completed && { borderWidth: 3, borderColor: '#1E40AF' },
+step.isCurrent && styles.circleCurrent,
+step.isCurrent && { borderWidth: 3, borderColor: '#1E40AF' },
                     ]}>
                     {step.completed ? (
                       <AppIcon name="checkmark" size={12} color="#FFF" />

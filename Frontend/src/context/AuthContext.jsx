@@ -1,30 +1,41 @@
+
 /**
  * Role-Based Authentication Context
- * Manages Customer & Admin authentication state, secure session persistence,
- * role verification, and login/logout handlers.
+ * Manages Customer, Admin, Seller & Delivery authentication.
  */
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from 'react';
+
 import authService from '../services/authService';
 
-export const AuthContext = createContext();
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [role, setRole] = useState(null); // 'customer' | 'admin' | 'seller' | 'delivery'
-  const [activeMode, setActiveMode] = useState('customer'); // 'customer' | 'seller'
+  const [role, setRole] = useState(null);
+  const [activeMode, setActiveMode] = useState('customer');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Multi-role & Dual-access flags
+  // Role-based access
   const isSeller =
     role === 'seller' ||
     user?.role === 'seller' ||
     user?.isSeller === true ||
     !!user?.storeName ||
     !!user?.storeSlug;
+
   const isDelivery = role === 'delivery';
-  // Dual Access System: A seller has full customer capabilities
+
+  // Sellers also have customer shopping access
   const isCustomer = role === 'customer' || isSeller;
+
   const isAdmin =
     role === 'admin' ||
     user?.role === 'super_admin' ||
@@ -34,34 +45,38 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = !!token && !!user;
 
   /**
-   * Dual Access Mode Switcher (Customer Shopping <-> Seller Business)
-   * Seamless: No logout, no repeated login, same session token.
-   * Preserves Cart & Wishlist.
-   * Persists to @appecom_active_app_mode in AsyncStorage.
+   * Switch between Customer and Seller modes
    */
   const switchMode = useCallback(async (newMode) => {
-    const targetMode = newMode === 'seller' ? 'seller' : 'customer';
-    setActiveMode(targetMode);
+    const targetMode =
+      newMode === 'seller' ? 'seller' : 'customer';
+
     await authService.switchMode(targetMode);
+    setActiveMode(targetMode);
+
     return targetMode;
   }, []);
 
   const toggleMode = useCallback(async () => {
-    const nextMode = activeMode === 'seller' ? 'customer' : 'seller';
+    const nextMode =
+      activeMode === 'seller' ? 'customer' : 'seller';
+
     return switchMode(nextMode);
   }, [activeMode, switchMode]);
 
   /**
-   * Boot-time session restoration
+   * Restore stored authentication session
    */
   const loadStoredSession = useCallback(async () => {
     setIsLoading(true);
+
     try {
       const session = await authService.restoreSession();
-      if (session.isAuthenticated) {
+
+      if (session?.isAuthenticated && session?.user && session?.token) {
         setUser(session.user);
         setToken(session.token);
-        setRole(session.role);
+        setRole(session.role || 'customer');
         setActiveMode(session.activeMode || 'customer');
       } else {
         setUser(null);
@@ -69,8 +84,12 @@ export const AuthProvider = ({ children }) => {
         setRole(null);
         setActiveMode('customer');
       }
-    } catch (e) {
-      console.warn('Error during session boot check:', e);
+    } catch (error) {
+      console.warn(
+        '[AuthContext] Session restoration failed:',
+        error?.message
+      );
+
       setUser(null);
       setToken(null);
       setRole(null);
@@ -85,241 +104,356 @@ export const AuthProvider = ({ children }) => {
   }, [loadStoredSession]);
 
   /**
-   * Customer Login (Email/Phone + Password)
+   * Customer Login
    */
-  const customerLogin = async (identifier, password, remember = true) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.customerLogin({ identifier, password, remember });
-      setUser(res.user);
-      setToken(res.token);
-      setRole(res.role || (res.user?.isSeller ? 'seller' : 'customer'));
-      setActiveMode('customer');
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const customerLogin = useCallback(
+    async (identifier, password, remember = true) => {
+      setIsLoading(true);
+
+      try {
+        const res = await authService.customerLogin({
+          identifier,
+          password,
+          remember,
+        });
+
+        setUser(res.user);
+        setToken(res.token);
+        setRole(
+          res.role || (res.user?.isSeller ? 'seller' : 'customer')
+        );
+        setActiveMode('customer');
+
+        return res;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
 
   /**
    * Customer Registration
    */
-  const customerRegister = async (userData) => {
+  const customerRegister = useCallback(async (userData) => {
     setIsLoading(true);
+
     try {
       const res = await authService.customerRegister(userData);
-      if (res.user && res.token) {
+
+      if (res?.user && res?.token) {
         setUser(res.user);
         setToken(res.token);
         setRole('customer');
+        setActiveMode('customer');
       }
+
       return res;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   /**
    * Request OTP
    */
-  const requestOtp = async (phone) => {
+  const requestOtp = useCallback(async (phone) => {
     return authService.requestOtp(phone);
-  };
+  }, []);
 
   /**
-   * Customer Verify OTP
+   * Verify OTP
    */
-  const verifyOtp = async (phone, otp, remember = true) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.verifyOtp(phone, otp, remember);
-      if (res.user && res.token) {
+  const verifyOtp = useCallback(
+    async (phone, otp, remember = true) => {
+      setIsLoading(true);
+
+      try {
+        const res = await authService.verifyOtp(
+          phone,
+          otp,
+          remember
+        );
+
+        if (res?.user && res?.token) {
+          setUser(res.user);
+          setToken(res.token);
+          setRole('customer');
+          setActiveMode('customer');
+        }
+
+        return res;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  /**
+   * Forgot Password
+   */
+  const forgotPassword = useCallback(async (email) => {
+    return authService.forgotPassword(email);
+  }, []);
+
+  /**
+   * Reset Password
+   */
+  const resetPassword = useCallback(
+    async (email, otp, newPassword) => {
+      return authService.resetPassword({
+        email,
+        otp,
+        newPassword,
+      });
+    },
+    []
+  );
+
+  /**
+   * Admin Login
+   */
+  const adminLogin = useCallback(
+    async (email, password, remember = true) => {
+      setIsLoading(true);
+
+      try {
+        const res = await authService.adminLogin({
+          email,
+          password,
+          remember,
+        });
+
         setUser(res.user);
         setToken(res.token);
-        setRole('customer');
+        setRole('admin');
+        setActiveMode('customer');
+
+        return res;
+      } finally {
+        setIsLoading(false);
       }
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    []
+  );
 
   /**
-   * Customer Forgot Password
+   * Seller Login
    */
-  const forgotPassword = async (email) => {
-    return authService.forgotPassword(email);
-  };
+  const sellerLogin = useCallback(
+    async (email, password, remember = true) => {
+      setIsLoading(true);
+
+      try {
+        const res = await authService.sellerLogin({
+          email,
+          password,
+          remember,
+        });
+
+        setUser(res.user);
+        setToken(res.token);
+        setRole('seller');
+        setActiveMode('seller');
+
+        return res;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
 
   /**
-   * Customer Reset Password
+   * Seller Registration
    */
-  const resetPassword = async (email, otp, newPassword) => {
-    return authService.resetPassword({ email, otp, newPassword });
-  };
-
-  /**
-   * Admin Login with backend verification & role enforcement
-   */
-  const adminLogin = async (email, password, remember = true) => {
+  const sellerRegister = useCallback(async (sellerData) => {
     setIsLoading(true);
-    try {
-      const res = await authService.adminLogin({ email, password, remember });
-      setUser(res.user);
-      setToken(res.token);
-      setRole('admin');
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  /**
-   * Seller Login with backend verification
-   */
-  const sellerLogin = async (email, password, remember = true) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.sellerLogin({ email, password, remember });
-      setUser(res.user);
-      setToken(res.token);
-      setRole('seller');
-      setActiveMode('seller');
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * Seller Registration with backend integration
-   */
-  const sellerRegister = async (sellerData) => {
-    setIsLoading(true);
     try {
       const res = await authService.sellerRegister(sellerData);
-      if (res.seller && res.token) {
-        setUser(res.seller);
+
+      const sellerUser = res?.seller || res?.user;
+
+      if (sellerUser && res?.token) {
+        setUser(sellerUser);
         setToken(res.token);
         setRole('seller');
         setActiveMode('seller');
       }
+
       return res;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   /**
-   * Delivery Partner Login with backend verification
+   * Delivery Partner Login
    */
-  const deliveryLogin = async (email, password, remember = true) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.deliveryLogin({ email, password, remember });
-      setUser(res.user);
-      setToken(res.token);
-      setRole('delivery');
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const deliveryLogin = useCallback(
+    async (email, password, remember = true) => {
+      setIsLoading(true);
 
-  /**
-   * Delivery Partner Registration with backend integration
-   */
-  const deliveryRegister = async (partnerData) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.deliveryRegister(partnerData);
-      if (res.partner && res.token) {
-        setUser(res.partner);
+      try {
+        const res = await authService.deliveryLogin({
+          email,
+          password,
+          remember,
+        });
+
+        setUser(res.user);
         setToken(res.token);
         setRole('delivery');
+        setActiveMode('customer');
+
+        return res;
+      } finally {
+        setIsLoading(false);
       }
+    },
+    []
+  );
+
+  /**
+   * Delivery Partner Registration
+   */
+  const deliveryRegister = useCallback(async (partnerData) => {
+    setIsLoading(true);
+
+    try {
+      const res = await authService.deliveryRegister(partnerData);
+
+      const partnerUser = res?.partner || res?.user;
+
+      if (partnerUser && res?.token) {
+        setUser(partnerUser);
+        setToken(res.token);
+        setRole('delivery');
+        setActiveMode('customer');
+      }
+
       return res;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   /**
-   * Secure Logout (Clears tokens, storage, resets role state)
+   * Logout
    */
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setIsLoading(true);
+
     try {
       await authService.logout();
     } finally {
       setUser(null);
       setToken(null);
       setRole(null);
+      setActiveMode('customer');
       setIsLoading(false);
     }
-  };
+  }, []);
 
   /**
-   * Update Profile data
+   * Update Profile
    */
-  const updateProfile = async (profileData) => {
-    setIsLoading(true);
-    try {
-      const res = await authService.updateProfile(profileData, role);
-      if (res.user) {
-        setUser((prev) => ({ ...prev, ...res.user }));
+  const updateProfile = useCallback(
+    async (profileData) => {
+      setIsLoading(true);
+
+      try {
+        const res = await authService.updateProfile(
+          profileData,
+          role
+        );
+
+        if (res?.user) {
+          setUser((prev) => ({
+            ...prev,
+            ...res.user,
+          }));
+        }
+
+        return res;
+      } finally {
+        setIsLoading(false);
       }
-      return res;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [role]
+  );
 
   /**
-   * Refresh Profile data
+   * Refresh Profile
    */
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     try {
       const res = await authService.getCurrentProfile(role);
-      const updatedUser = res?.user || res?.admin || res?.seller || res?.partner;
+
+      const updatedUser =
+        res?.user ||
+        res?.admin ||
+        res?.seller ||
+        res?.partner;
+
       if (updatedUser) {
         setUser(updatedUser);
       }
-    } catch (e) {
-      console.warn('Failed to refresh profile:', e);
-    }
-  };
 
+      return updatedUser || null;
+    } catch (error) {
+      console.warn(
+        '[AuthContext] Profile refresh failed:',
+        error?.message
+      );
+
+      return null;
+    }
+  }, [role]);
+
+  /**
+   * Context Value
+   */
   const authContextValue = useMemo(
     () => ({
       user,
       token,
       role,
       activeMode,
+
       isAuthenticated,
       isAdmin,
       isSeller,
       isDelivery,
       isCustomer,
       isLoading,
+
       switchMode,
       toggleMode,
+
       customerLogin,
       customerRegister,
       requestOtp,
       verifyOtp,
       forgotPassword,
       resetPassword,
+
       adminLogin,
       sellerLogin,
       sellerRegister,
+
       deliveryLogin,
       deliveryRegister,
+
       updateProfile,
       logout,
       refreshProfile,
+
       reloadSession: loadStoredSession,
-      // Legacy alias to preserve backward compatibility with existing components
+
+      // Backward compatibility
       register: customerRegister,
       login: customerLogin,
     }),
@@ -349,6 +483,7 @@ export const AuthProvider = ({ children }) => {
       deliveryRegister,
       updateProfile,
       logout,
+      refreshProfile,
       loadStoredSession,
     ]
   );
@@ -360,11 +495,18 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+/**
+ * Authentication Hook
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error(
+      'useAuth must be used within an AuthProvider'
+    );
   }
+
   return context;
 };
 

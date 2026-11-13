@@ -474,6 +474,25 @@ export const secureStorage = {
   },
 
   /**
+ * Dedicated Customer Token Accessor
+ * Always returns the customer token, independent of active role.
+ */
+async getCustomerToken() {
+  try {
+    const key = Config.STORAGE_KEYS.USER_TOKEN;
+
+    const cached = getCachedToken(key);
+    if (cached) return cached;
+
+    const token = await safeGetItem(key);
+    if (token) setCachedToken(key, token);
+
+    return token;
+  } catch (e) {
+    return null;
+  }
+},
+  /**
    * Dedicated Delivery Token Accessor (In-Memory Fast Path)
    */
   async getDeliveryToken() {

@@ -132,6 +132,15 @@ const deliveryPartnerSchema = new mongoose.Schema(
     },
 
     // Online / Offline Availability
+    role: {
+      type: String,
+      default: 'delivery',
+      index: true,
+    },
+    isDelivery: {
+      type: Boolean,
+      default: true,
+    },
     availability: {
       type: String,
       enum: ['online', 'offline'],

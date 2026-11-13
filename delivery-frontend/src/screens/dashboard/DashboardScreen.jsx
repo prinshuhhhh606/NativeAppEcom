@@ -103,7 +103,7 @@ export const DashboardScreen = ({ navigation }) => {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchOperationsData} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}>
         {/* Urgent Request Banner if any */}
-        {requests.length > 0 && (
+        {requests.length > 0 ? (
           <TouchableOpacity
             style={styles.requestAlertBanner}
             activeOpacity={0.85}
@@ -119,6 +119,34 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
             <Text style={styles.alertArrow}>→</Text>
           </TouchableOpacity>
+        ) : (
+          <View
+            style={{
+              backgroundColor: '#F8FAFC',
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+              padding: 12,
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 18 }}>🛵</Text>
+              <View>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1E293B' }}>
+                  Fleet Dispatch Active
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>
+                  {isOnline ? 'Online • Ready for merchant assignments' : 'Offline • Go online to receive orders'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Requests')}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: Colors.primary }}>View All →</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Today's Earnings Hero Card */}

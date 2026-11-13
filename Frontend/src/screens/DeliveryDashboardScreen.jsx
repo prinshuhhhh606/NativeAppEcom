@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,18 +19,40 @@ import Loading from '../components/Loading';
 import { useAuth } from '../context/AuthContext';
 import authService from '../services/authService';
 import locationService from '../services/locationService';
+import socketService from '../services/socketService';
 import { formatPrice } from '../utils/helpers';
+
+// Helper to determine if two lists of deliveries or requests are identical
+const isSameList = (prev, next, idKey = '_id') => {
+  if (prev === next) return true;
+  if (!Array.isArray(prev) || !Array.isArray(next)) return false;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const pId = prev[i]?.[idKey] || prev[i]?.assignmentId || prev[i]?._id || prev[i]?.id;
+    const nId = next[i]?.[idKey] || next[i]?.assignmentId || next[i]?._id || next[i]?.id;
+    const pStatus = prev[i]?.status;
+    const nStatus = next[i]?.status;
+    if (pId !== nId || pStatus !== nStatus) return false;
+  }
+  return true;
+};
 
 export const DeliveryDashboardScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { user, logout, refreshProfile } = useAuth();
+  const { user, logout, refreshProfile, isDelivery, role } = useAuth();
 
+  const userId = user?._id || user?.id;
   const kycStatus = user?.kycStatus || 'pending';
   const isApproved = kycStatus === 'approved';
   const isPending = kycStatus === 'pending' || kycStatus === 'under_review';
   const isRejected = kycStatus === 'rejected';
 
-  const isDeliveryUser = user?.role === 'delivery' || user?.role === 'rider' || user?.isDelivery === true;
+  const isDeliveryUser =
+    isDelivery ||
+    role === 'delivery' ||
+    user?.role === 'delivery' ||
+    user?.role === 'rider' ||
+    user?.isDelivery === true;
 
   const [isOnline, setIsOnline] = useState(isApproved && user?.availability === 'online');
   const [tasks, setTasks] = useState([]);
@@ -54,10 +76,16 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
   const [payoutAmount, setPayoutAmount] = useState('1000');
   const [requestingPayout, setRequestingPayout] = useState(false);
 
+  // Ref to serialize and prevent overlapping in-flight fleet data calls
+  const isFetchingRef = useRef(false);
+  const lastPingRef = useRef(null);
+
   // Find active in-progress task for GPS streaming
   const activeTask = tasks.find((t) =>
     ['assigned', 'accepted', 'reached_pickup', 'picked_up', 'out_for_delivery', 'reached_customer'].includes(t.status)
   );
+  const activeTaskId = activeTask?._id;
+  const activeTaskStatus = activeTask?.status;
 
   // 1. Automatically start/stop real-time location streaming based on duty & active task
   useEffect(() => {
@@ -70,23 +98,25 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
         activeTask._id;
       const deliveryId = activeTask._id;
       locationService.startLocationTracking({ orderId: trackingOrderId, deliveryId });
-      setIsGpsTransmitting(true);
+      setIsGpsTransmitting((prev) => (prev ? prev : true));
     } else {
       locationService.stopLocationTracking();
-      setIsGpsTransmitting(false);
+      setIsGpsTransmitting((prev) => (prev ? false : prev));
     }
-  }, [isApproved, isOnline, activeTask]);
+  }, [isApproved, isOnline, activeTaskId, activeTaskStatus]);
 
   // 2. Subscribe to location updates for live ping time indicator
   useEffect(() => {
     const unsub = locationService.subscribe(() => {
-      setLastGpsPingTime(Date.now());
+      const now = Date.now();
+      lastPingRef.current = now;
+      setLastGpsPingTime(now);
       setPingSecondsAgo(0);
     });
 
     const pingTimer = setInterval(() => {
-      if (lastGpsPingTime) {
-        setPingSecondsAgo(Math.floor((Date.now() - lastGpsPingTime) / 1000));
+      if (lastPingRef.current) {
+        setPingSecondsAgo(Math.floor((Date.now() - lastPingRef.current) / 1000));
       }
     }, 1000);
 
@@ -94,7 +124,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
       if (unsub) unsub();
       clearInterval(pingTimer);
     };
-  }, [lastGpsPingTime]);
+  }, []);
 
   // Stop tracking on screen unmount
   useEffect(() => {
@@ -103,42 +133,78 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
     };
   }, []);
 
-  const loadAllFleetData = useCallback(async () => {
-    if (!isDeliveryUser || !user) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
+  // Stabilized fleet data loader: does NOT call setUser/refreshProfile continuously
+  const loadAllFleetData = useCallback(
+    async (options = { syncProfile: false }) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
 
-    try {
-      await refreshProfile().catch(() => {});
-      if (isApproved) {
+      try {
+        if (options?.syncProfile) {
+          await refreshProfile().catch(() => {});
+        }
         const [tasksData, requestsData] = await Promise.all([
           authService.getDeliveryTasks().catch(() => []),
           authService.getDeliveryRequests().catch(() => []),
         ]);
-        setTasks(tasksData || []);
-        setRequests(requestsData || []);
-      }
-    } catch (e) {
-      console.warn('Error loading fleet data', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isApproved, isDeliveryUser, refreshProfile, user]);
 
+        setTasks((prev) => (isSameList(prev, tasksData) ? prev : tasksData || []));
+        setRequests((prev) =>
+          isSameList(prev, requestsData, 'assignmentId') ? prev : requestsData || []
+        );
+      } catch (e) {
+        console.warn('[DeliveryDashboard] Error loading fleet data:', e);
+      } finally {
+        isFetchingRef.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [refreshProfile]
+  );
+
+  // Initial data load when rider identity is available
   useEffect(() => {
-    if (!isDeliveryUser || !user) {
-      setLoading(false);
-      return;
+    if (userId) {
+      loadAllFleetData();
     }
-    loadAllFleetData();
-  }, [loadAllFleetData, isDeliveryUser, user]);
+  }, [userId, loadAllFleetData]);
+
+  // Real-time socket subscription for incoming dispatch requests
+  useEffect(() => {
+    let activeSocket = null;
+    let assignmentListener = null;
+
+    const initDeliverySocket = async () => {
+      try {
+        activeSocket = await socketService.getSocket();
+        if (activeSocket && userId) {
+          activeSocket.emit('join_delivery_room', userId);
+          assignmentListener = (eventData) => {
+            console.log('[DeliveryDashboard] Real-time assignment arrived:', eventData);
+            loadAllFleetData();
+          };
+          activeSocket.on('delivery:new_assignment', assignmentListener);
+        }
+      } catch (err) {
+        console.warn('[DeliveryDashboard] Socket initialization warning:', err?.message);
+      }
+    };
+
+    if (userId) {
+      initDeliverySocket();
+    }
+
+    return () => {
+      if (activeSocket && assignmentListener) {
+        activeSocket.off('delivery:new_assignment', assignmentListener);
+      }
+    };
+  }, [userId, loadAllFleetData]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadAllFleetData();
+    loadAllFleetData({ syncProfile: true });
   };
 
   const handleToggleOnline = async () => {
@@ -435,7 +501,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
 
               <TouchableOpacity
                 style={styles.checkStatusBtn}
-                onPress={loadAllFleetData}
+                onPress={() => loadAllFleetData({ syncProfile: true })}
                 activeOpacity={0.8}>
                 <AppIcon name="refresh" size={16} color="#FFF" />
                 <Text style={styles.checkStatusBtnText}>Check Approval Status</Text>
@@ -496,15 +562,37 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
           </View>
 
           {/* Incoming Delivery Requests (Seller -> Rider) */}
-          {requests.length > 0 && (
-            <View style={{ marginBottom: 20 }}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: '#F59E0B' }]}>
-                  🔔 Incoming Dispatch Requests ({requests.length})
+          <View style={{ marginBottom: 20 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: requests.length > 0 ? '#F59E0B' : '#94A3B8' }]}>
+                🔔 Incoming Dispatch Requests ({requests.length})
+              </Text>
+              {requests.length > 0 && (
+                <View style={[styles.taskBadge, { backgroundColor: '#F59E0B' }]}>
+                  <Text style={[styles.taskBadgeText, { color: '#000', fontWeight: '800' }]}>NEW DISPATCH</Text>
+                </View>
+              )}
+            </View>
+
+            {requests.length === 0 ? (
+              <View
+                style={{
+                  padding: 16,
+                  backgroundColor: '#1C2438',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                  alignItems: 'center',
+                }}>
+                <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '700' }}>
+                  No pending dispatch requests
+                </Text>
+                <Text style={{ color: '#64748B', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                  Stay {isOnline ? 'On Duty' : 'online'} to receive real-time order assignments from nearby merchants.
                 </Text>
               </View>
-
-              {requests.map((req) => (
+            ) : (
+              requests.map((req) => (
                 <View
                   key={req.assignmentId || req._id}
                   style={[styles.taskCard, { borderColor: '#F59E0B', backgroundColor: '#1C2438' }]}>
@@ -545,9 +633,9 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))}
-            </View>
-          )}
+              ))
+            )}
+          </View>
 
           {/* Live GPS Broadcasting Indicator */}
           {isGpsTransmitting && (
@@ -703,18 +791,28 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
 
                   {/* Step Workflow Actions */}
                   {isPickupPhase && (
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ gap: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0284C7' }]}
+                          activeOpacity={0.85}
+                          onPress={() => handleOpenOtpModal(task, 'pickup')}>
+                          <Text style={styles.taskActionBtnText}>1. Pickup OTP ({task.pickupOtp || '7821'})</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0D9488' }]}
+                          activeOpacity={0.85}
+                          onPress={() => handleUpdateStatus(task, 'picked_up')}>
+                          <Text style={styles.taskActionBtnText}>Confirm Pickup</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Direct Start Out For Delivery */}
                       <TouchableOpacity
-                        style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0284C7' }]}
+                        style={[styles.taskActionBtn, { backgroundColor: '#EA580C' }]}
                         activeOpacity={0.85}
-                        onPress={() => handleOpenOtpModal(task, 'pickup')}>
-                        <Text style={styles.taskActionBtnText}>1. Pickup OTP ({task.pickupOtp || '7821'})</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0D9488' }]}
-                        activeOpacity={0.85}
-                        onPress={() => handleUpdateStatus(task, 'picked_up')}>
-                        <Text style={styles.taskActionBtnText}>Confirm Pickup</Text>
+                        onPress={() => handleUpdateStatus(task, 'out_for_delivery')}>
+                        <Text style={styles.taskActionBtnText}>🚀 Start Out For Delivery</Text>
                       </TouchableOpacity>
                     </View>
                   )}
