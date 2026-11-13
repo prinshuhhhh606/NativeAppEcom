@@ -82,12 +82,12 @@ const register = async (req, res) => {
         bankName: bankName || 'HDFC Bank',
         upiId: upiId || `${phone}@upi`,
       },
-      availability: 'online',
-      isAvailable: true,
+      availability: 'offline',
+      isAvailable: false,
       earnings: {
-        available: 500, // Welcome signup credit
+        available: 0,
         pending: 0,
-        totalEarned: 500,
+        totalEarned: 0,
         todayEarned: 0,
         weekEarned: 0,
         monthEarned: 0,
@@ -98,7 +98,8 @@ const register = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Delivery partner registered successfully',
+      message:
+        'Registration successful! Your account is pending Admin approval. You will be able to access your Delivery Dashboard after approval.',
       data: {
         partner: {
           _id: partner._id,
@@ -108,12 +109,16 @@ const register = async (req, res) => {
           vehicleType: partner.vehicleType,
           vehicleNumber: partner.vehicleNumber,
           kycStatus: partner.kycStatus,
+          isVerified: partner.isVerified,
+          isApproved: false,
+          requiresApproval: true,
           availability: partner.availability,
           earnings: partner.earnings,
           role: 'delivery',
           isDelivery: true,
         },
         token,
+        accessToken: token,
       },
     });
   } catch (error) {
@@ -186,6 +191,10 @@ const login = async (req, res) => {
           vehicleNumber: partner.vehicleNumber,
           drivingLicenseNumber: partner.drivingLicenseNumber,
           kycStatus: partner.kycStatus,
+          isVerified: partner.isVerified,
+          isApproved: partner.kycStatus === 'approved',
+          requiresApproval: partner.kycStatus !== 'approved',
+          adminRemarks: partner.adminRemarks || '',
           availability: partner.availability,
           isAvailable: partner.isAvailable,
           currentLocation: partner.currentLocation,

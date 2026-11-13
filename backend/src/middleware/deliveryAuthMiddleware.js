@@ -90,7 +90,46 @@ const protectDelivery = async (req, res, next) => {
   }
 };
 
+/**
+ * Middleware: Require Approved KYC Status
+ * Blocks unapproved/pending/rejected delivery partners from operational routes.
+ */
+const requireApprovedDelivery = async (req, res, next) => {
+  try {
+    if (!req.deliveryPartner) {
+      return errorResponse(
+        res,
+        'Authentication required. Please log in as a delivery partner.',
+        401
+      );
+    }
+
+    if (req.deliveryPartner.kycStatus !== 'approved') {
+      const isRejected = req.deliveryPartner.kycStatus === 'rejected';
+      const msg = isRejected
+        ? `Your account was rejected by Admin: ${req.deliveryPartner.adminRemarks || 'Document verification criteria not met'}.`
+        : 'Your account is pending Admin approval. You will be able to access your Delivery Dashboard after approval.';
+
+      return errorResponse(
+        res,
+        msg,
+        403,
+        {
+          kycStatus: req.deliveryPartner.kycStatus,
+          requiresApproval: true,
+          adminRemarks: req.deliveryPartner.adminRemarks || '',
+        }
+      );
+    }
+
+    return next();
+  } catch (err) {
+    return errorResponse(res, 'Internal authorization error.', 500);
+  }
+};
+
 module.exports = {
   protectDelivery,
+  requireApprovedDelivery,
 };
 

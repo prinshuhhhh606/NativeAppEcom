@@ -64,6 +64,7 @@ export function App() {
                 <Route path="sellers" element={<Sellers />} />
                 <Route path="franchises" element={<Franchises />} />
                 <Route path="delivery-partners" element={<DeliveryPartners />} />
+                <Route path="delivery-approvals" element={<DeliveryPartners defaultTab="pending" />} />
                 <Route path="live-deliveries" element={<LiveDeliveries />} />
                 <Route path="commissions" element={<Commissions />} />
                 <Route path="payouts" element={<Payouts />} />

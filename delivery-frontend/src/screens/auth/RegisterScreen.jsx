@@ -57,9 +57,9 @@ export const RegisterScreen = ({ navigation }) => {
       });
 
       Alert.alert(
-        'Registration Submitted!',
-        'Welcome to Appsica Fleet! Your profile is verified and active.',
-        [{ text: 'Start Shift', onPress: () => {} }]
+        'Registration Successful! ⏳',
+        'Registration successful! Your account is pending Admin approval. You will be able to access your Delivery Dashboard after approval.',
+        [{ text: 'Check Application Status', onPress: () => {} }]
       );
     } catch (err) {
       setError(err.message || 'Registration failed. Check details.');

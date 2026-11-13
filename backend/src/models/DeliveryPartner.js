@@ -100,7 +100,7 @@ const deliveryPartnerSchema = new mongoose.Schema(
     kycStatus: {
       type: String,
       enum: ['pending', 'under_review', 'approved', 'rejected', 'suspended', 'blocked'],
-      default: 'approved',
+      default: 'pending',
       index: true,
     },
     kycDocuments: {
@@ -202,7 +202,7 @@ const deliveryPartnerSchema = new mongoose.Schema(
 
     isVerified: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     isActive: {
       type: Boolean,

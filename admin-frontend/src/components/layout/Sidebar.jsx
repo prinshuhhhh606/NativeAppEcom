@@ -40,6 +40,7 @@ const NAV_ITEMS = [
   { name: 'Vendors / Sellers', path: '/sellers', icon: Store, gradient: 'from-emerald-500 to-teal-500', badge: 'KYC' },
   { name: 'Franchise Hub', path: '/franchises', icon: Building2, gradient: 'from-violet-500 to-purple-600', badge: 'Area' },
   { name: 'Delivery Fleet', path: '/delivery-partners', icon: Bike, gradient: 'from-cyan-500 to-teal-400', badge: 'Riders' },
+  { name: 'Rider Approvals', path: '/delivery-approvals', icon: ShieldCheck, gradient: 'from-amber-500 to-emerald-500', badge: 'KYC' },
   { name: 'Live Fleet Radar', path: '/live-deliveries', icon: Navigation, gradient: 'from-sky-400 to-blue-600', badge: 'GPS' },
   { name: 'Customers', path: '/customers', icon: Users, gradient: 'from-pink-500 to-rose-500' },
   { name: 'Commissions', path: '/commissions', icon: Coins, gradient: 'from-amber-400 to-yellow-600' },

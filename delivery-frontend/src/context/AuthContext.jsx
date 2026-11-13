@@ -216,6 +216,62 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Manually refresh partner profile from backend (e.g. check approval status)
+  const refreshProfile = async () => {
+    try {
+      const response = await deliveryService.getProfile();
+      const freshPartner = getPartner(response);
+
+      if (freshPartner) {
+        setPartner(freshPartner);
+        await AsyncStorage.setItem(
+          Config.STORAGE_KEYS.USER,
+          JSON.stringify(freshPartner)
+        );
+      }
+      return freshPartner;
+    } catch (profileError) {
+      console.warn('Manual profile refresh error:', profileError.message);
+      throw profileError;
+    }
+  };
+
+  // Real-time socket sync for Admin Approval status updates
+  useEffect(() => {
+    if (!partner?._id) return;
+
+    const handleAccountStatus = (data) => {
+      if (data?.kycStatus) {
+        setPartner((prev) => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            kycStatus: data.kycStatus,
+            isVerified: data.kycStatus === 'approved',
+            adminRemarks: data.adminRemarks || prev.adminRemarks,
+          };
+          AsyncStorage.setItem(
+            Config.STORAGE_KEYS.USER,
+            JSON.stringify(updated)
+          ).catch(() => {});
+          return updated;
+        });
+      }
+    };
+
+    let cleanup = null;
+    if (typeof socketService.on === 'function') {
+      cleanup = socketService.on('account_status_updated', handleAccountStatus);
+    }
+    return () => {
+      if (typeof cleanup === 'function') {
+        cleanup();
+      } else if (typeof socketService.off === 'function') {
+        socketService.off('account_status_updated', handleAccountStatus);
+      }
+    };
+  }, [partner?._id]);
+
   // Update profile
   const updateProfile = async (updates) => {
     try {
@@ -250,6 +306,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        refreshProfile,
       }}
     >
       {children}

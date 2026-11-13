@@ -11,15 +11,18 @@ import {
   Mail,
   RefreshCw,
   Truck,
+  ShieldCheck,
+  Calendar,
+  FileText,
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
-export const DeliveryPartners = () => {
+export const DeliveryPartners = ({ defaultTab = 'all' }) => {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(defaultTab);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -28,6 +31,10 @@ export const DeliveryPartners = () => {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Rejection Remarks Modal
+  const [rejectingPartner, setRejectingPartner] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   useEffect(() => {
     fetchPartners();
@@ -115,10 +122,10 @@ export const DeliveryPartners = () => {
         <div>
           <h1 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
             <Bike className="w-7 h-7 text-teal-600" />
-            Delivery Fleet Partners Management
+            <span>Delivery Partner Approvals & Fleet Management</span>
           </h1>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Real-time registered delivery rider records from MongoDB database ({totalCount} riders total)
+            Review new delivery partner registrations, verify documents, and approve access to the delivery dashboard ({totalCount} riders total)
           </p>
         </div>
 
@@ -184,10 +191,10 @@ export const DeliveryPartners = () => {
                   Contact Info
                 </th>
                 <th className="py-3.5 px-4 text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Vehicle & License
+                  Vehicle & KYC
                 </th>
                 <th className="py-3.5 px-4 text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Operating Hub
+                  Registration Date
                 </th>
                 <th className="py-3.5 px-4 text-[11px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   KYC Status
@@ -223,7 +230,10 @@ export const DeliveryPartners = () => {
                         <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-950 flex items-center justify-center text-teal-700 dark:text-teal-400 font-black text-xs">
                           {p.name?.slice(0, 2).toUpperCase()}
                         </div>
-                        {p.name}
+                        <div>
+                          <div>{p.name}</div>
+                          <div className="text-[10px] text-gray-400 font-normal">ID: {p._id?.slice(-6)}</div>
+                        </div>
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
@@ -245,8 +255,13 @@ export const DeliveryPartners = () => {
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      <div>{p.address?.city || 'New Delhi'}</div>
-                      <div className="text-[10px] text-gray-400">PIN: {p.address?.pinCode || '110001'}</div>
+                      <div className="flex items-center gap-1 text-[11px]">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        <span>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        {p.address?.city || 'Delhi'}, {p.address?.pinCode || ''}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">{getStatusBadge(p.kycStatus)}</td>
                     <td className="py-3.5 px-4 text-right">
@@ -263,9 +278,10 @@ export const DeliveryPartners = () => {
                         )}
                         {p.kycStatus !== 'rejected' && (
                           <button
-                            onClick={() =>
-                              handleUpdateStatus(p._id, 'rejected', 'License verification failed')
-                            }
+                            onClick={() => {
+                              setRejectingPartner(p);
+                              setRejectionReason('Documents or vehicle verification failed');
+                            }}
                             disabled={actionLoading}
                             className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] shadow-sm transition"
                             title="Reject Delivery Rider"
@@ -369,19 +385,68 @@ export const DeliveryPartners = () => {
               )}
               {selectedPartner.kycStatus !== 'rejected' && (
                 <button
-                  onClick={() =>
-                    handleUpdateStatus(
-                      selectedPartner._id,
-                      'rejected',
-                      'License or vehicle verification rejected'
-                    )
-                  }
+                  onClick={() => {
+                    setRejectingPartner(selectedPartner);
+                    setRejectionReason('Documents or vehicle verification criteria not met');
+                  }}
                   disabled={actionLoading}
                   className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/20"
                 >
                   ✕ Reject Application
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Reason Modal */}
+      {rejectingPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-gray-100 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-slate-800">
+              <h3 className="font-extrabold text-sm text-red-600 flex items-center gap-2">
+                <XCircle className="w-5 h-5" />
+                Reject Delivery Partner Application
+              </h3>
+              <button
+                onClick={() => setRejectingPartner(null)}
+                className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Rejecting rider <strong className="text-gray-900 dark:text-white">{rejectingPartner.name}</strong> ({rejectingPartner.phone}). Please enter the reason:
+            </p>
+
+            <textarea
+              rows={3}
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="e.g. Invalid driving license number or expired insurance"
+              className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setRejectingPartner(null)}
+                className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-xs font-bold text-gray-700 dark:text-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const partnerId = rejectingPartner._id;
+                  setRejectingPartner(null);
+                  handleUpdateStatus(partnerId, 'rejected', rejectionReason || 'Application rejected by Admin');
+                }}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30"
+              >
+                Confirm Reject
+              </button>
             </div>
           </div>
         </div>

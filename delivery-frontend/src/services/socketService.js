@@ -160,6 +160,37 @@ export const socketService = {
     };
   },
 
+  on: (eventName, callback) => {
+    if (typeof callback !== 'function' || !eventName) {
+      return () => {};
+    }
+
+    if (!listeners[eventName]) {
+      listeners[eventName] = new Set();
+    }
+    listeners[eventName].add(callback);
+
+    if (socket) {
+      socket.on(eventName, callback);
+    }
+
+    return () => {
+      listeners[eventName]?.delete(callback);
+      socket?.off(eventName, callback);
+    };
+  },
+
+  off: (eventName, callback) => {
+    if (eventName && listeners[eventName]) {
+      if (callback) {
+        listeners[eventName].delete(callback);
+      } else {
+        listeners[eventName].clear();
+      }
+    }
+    socket?.off(eventName, callback);
+  },
+
   onCancelled: (callback) => {
     if (typeof callback !== 'function') {
       return () => {};

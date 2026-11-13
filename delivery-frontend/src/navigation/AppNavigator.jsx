@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
+import ApprovalPendingScreen from '../screens/auth/ApprovalPendingScreen';
 import BottomTabNavigator from './BottomTabNavigator';
 import PayoutsScreen from '../screens/payouts/PayoutsScreen';
 import HistoryScreen from '../screens/history/HistoryScreen';
@@ -14,7 +15,7 @@ import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 const Stack = createNativeStackNavigator();
 
 export const AppNavigator = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isApproved, isLoading } = useAuth();
 
   if (isLoading) {
     return null;
@@ -32,6 +33,10 @@ export const AppNavigator = () => {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
+          </>
+        ) : !isApproved ? (
+          <>
+            <Stack.Screen name="ApprovalPending" component={ApprovalPendingScreen} />
           </>
         ) : (
           <>
