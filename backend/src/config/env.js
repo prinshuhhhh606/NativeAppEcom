@@ -8,8 +8,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const env = {
   PORT: process.env.PORT || 5000,
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  MONGODB_URI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/appecom_db',
+  NODE_ENV: process.env.NODE_ENV || 'production',
+  MONGODB_URI: process.env.MONGODB_URI || 'mongodb+srv://prinshuhhhh_db_user:prince_database@cluster0.zltrmb3.mongodb.net/appecom_db',
 
   JWT: {
     ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'appecom_super_secret_access_jwt_key_2026',

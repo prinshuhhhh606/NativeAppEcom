@@ -5,19 +5,19 @@ const dns = require('dns');
 const mongoose = require('mongoose');
 const env = require('./env');
 
-// Ensure SRV DNS resolution works smoothly on Windows with MongoDB Atlas (+srv://)
-if (env.MONGODB_URI && env.MONGODB_URI.startsWith('mongodb+srv://')) {
-  try {
-    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
-  } catch (e) {
-    // Ignore if not supported in custom environment
-  }
+// Ensure SRV DNS resolution works smoothly with MongoDB Atlas (+srv://) across Windows and Linux cloud hosts
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {
+  // Ignore if custom environment restricts setting DNS
 }
 
-const connectDB = async () => {
+const connectDB = async (retryCount = 0) => {
+  const uri = env.MONGODB_URI || 'mongodb+srv://prinshuhhhh_db_user:prince_database@cluster0.zltrmb3.mongodb.net/appecom_db';
+
   try {
-    const conn = await mongoose.connect(env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+    const conn = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000,
       autoIndex: true,
     });
 
@@ -25,10 +25,16 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error(`[MongoDB] Connection failed: ${error.message}`);
-    console.warn('[MongoDB] Make sure MongoDB is running locally or MONGODB_URI is configured.');
-    // Do not crash immediately in development so health check and offline handlers work
+    console.warn('[MongoDB] Retrying database connection in 5 seconds...');
+    
+    // Automatically retry connection up to 5 times
+    if (retryCount < 5) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      return connectDB(retryCount + 1);
+    }
+
     if (env.NODE_ENV === 'production') {
-      process.exit(1);
+      console.error('[MongoDB] Critical: Unable to connect to MongoDB in production.');
     }
   }
 };

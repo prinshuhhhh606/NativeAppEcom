@@ -93,6 +93,10 @@ app.get('/', (req, res) => {
 });
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  const mongoose = require('mongoose');
+  const mongoStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const dbState = mongoStates[mongoose.connection.readyState] || 'unknown';
+
   res.status(200).json({
     status: 'OK',
     uptime: process.uptime(),
@@ -100,6 +104,12 @@ app.get('/api/health', (req, res) => {
     service: 'Pan India E-Commerce Backend API & Real-Time Socket Server',
     version: '2.0.0',
     environment: env.NODE_ENV,
+    database: {
+      status: dbState,
+      host: mongoose.connection.host || 'none',
+      name: mongoose.connection.name || 'none',
+      isConnected: mongoose.connection.readyState === 1
+    },
     socketsActive: io ? io.engine?.clientsCount || 0 : 0,
   });
 });
