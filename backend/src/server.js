@@ -108,7 +108,8 @@ app.get('/api/health', (req, res) => {
       status: dbState,
       host: mongoose.connection.host || 'none',
       name: mongoose.connection.name || 'none',
-      isConnected: mongoose.connection.readyState === 1
+      isConnected: mongoose.connection.readyState === 1,
+      lastError: require('./config/db').getLastMongoError ? require('./config/db').getLastMongoError() : null,
     },
     socketsActive: io ? io.engine?.clientsCount || 0 : 0,
   });
