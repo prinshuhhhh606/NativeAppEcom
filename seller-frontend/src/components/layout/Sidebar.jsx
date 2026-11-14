@@ -93,7 +93,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         }`}
       >
         {/* Brand Header */}
-        <div className="flex items-center justify-between px-5 sm:px-6 h-16 sm:h-20 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between px-5 sm:px-6 min-h-[4rem] sm:min-h-[5rem] border-b border-slate-100 dark:border-slate-800 pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 flex-shrink-0">
               <Store className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -185,7 +185,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </nav>
 
         {/* Footer / Logout */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
           <button
             onClick={handleLogout}
             className="flex items-center w-full justify-center gap-2 px-4 py-2.5 text-xs font-bold text-rose-600 dark:text-rose-400 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all border border-rose-100 dark:border-rose-900/40"

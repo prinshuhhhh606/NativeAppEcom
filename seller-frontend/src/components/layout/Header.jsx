@@ -28,8 +28,9 @@ export const Header = ({ onOpenSidebar }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 sm:h-16 lg:h-20 px-3 sm:px-6 lg:px-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800 shadow-2xs select-none">
-      {/* Left: Mobile Drawer Trigger & Store Identity */}
+    <header className="sticky top-0 z-30 w-full px-3 sm:px-6 lg:px-8 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800 shadow-2xs select-none pt-[env(safe-area-inset-top,0px)]">
+      <div className="flex items-center justify-between w-full h-14 sm:h-16 lg:h-20">
+        {/* Left: Mobile Drawer Trigger & Store Identity */}
       <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
         <button
           onClick={onOpenSidebar}
@@ -171,6 +172,7 @@ export const Header = ({ onOpenSidebar }) => {
             </>
           )}
         </div>
+      </div>
       </div>
     </header>
   );

@@ -8,7 +8,7 @@ export const SellerLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased overflow-x-hidden">
       {/* Sidebar / Android App Navigation Drawer */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -16,7 +16,7 @@ export const SellerLayout = () => {
       <div className="flex-1 flex flex-col lg:pl-72 transition-all duration-300 min-w-0">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
-        <main className="flex-1 p-3 sm:p-5 lg:p-8 max-w-7xl w-full mx-auto pb-24 lg:pb-8 min-w-0 overflow-x-hidden">
+        <main className="flex-1 p-3 sm:p-5 lg:p-8 max-w-7xl w-full mx-auto pb-28 sm:pb-24 lg:pb-8 min-w-0 overflow-x-hidden">
           {/* Child Page Content */}
           <Outlet />
         </main>

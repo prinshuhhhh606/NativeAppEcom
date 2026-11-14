@@ -48,7 +48,7 @@ export const BottomNav = ({ onOpenMenu }) => {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.06)] select-none pb-safe"
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.06)] select-none pb-[env(safe-area-inset-bottom,0px)]"
       role="navigation"
       aria-label="Mobile Bottom Navigation"
     >
