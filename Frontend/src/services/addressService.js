@@ -37,9 +37,49 @@ const normalizeAddress = (addr) => {
 
 export const addressService = {
   /**
-   * Get all customer saved addresses
+   * Fast read from local AsyncStorage without any network delay
    */
-  async getAddresses() {
+  async getLocalCachedAddresses() {
+    try {
+      const stored = await AsyncStorage.getItem(Config.STORAGE_KEYS.DELIVERY_ADDRESSES);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed.map(normalizeAddress) : [];
+      }
+    } catch (err) {}
+    return [];
+  },
+
+  /**
+   * Get all customer saved addresses
+   * Returns local cache immediately for 0ms render, and revalidates in background
+   */
+  async getAddresses(forceRefresh = false) {
+    const cached = await this.getLocalCachedAddresses();
+
+    if (!forceRefresh && cached.length > 0) {
+      // Background revalidation (fire and forget)
+      api
+        .get('/addresses')
+        .then((response) => {
+          const rawList = Array.isArray(response.data)
+            ? response.data
+            : Array.isArray(response)
+            ? response
+            : response.data?.addresses || [];
+          const normalizedList = rawList.map(normalizeAddress);
+          if (normalizedList.length > 0) {
+            AsyncStorage.setItem(
+              Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
+              JSON.stringify(normalizedList)
+            ).catch(() => {});
+          }
+        })
+        .catch(() => {});
+
+      return cached;
+    }
+
     try {
       const response = await api.get('/addresses');
       const rawList = Array.isArray(response.data)
@@ -56,21 +96,14 @@ export const addressService = {
           JSON.stringify(normalizedList)
         );
       }
-      return normalizedList;
+      return normalizedList.length > 0 ? normalizedList : cached;
     } catch (e) {
-      try {
-        const stored = await AsyncStorage.getItem(Config.STORAGE_KEYS.DELIVERY_ADDRESSES);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          return Array.isArray(parsed) ? parsed.map(normalizeAddress) : [];
-        }
-      } catch (err) {}
-      return [];
+      return cached;
     }
   },
 
   /**
-   * Add new delivery address
+   * Add new delivery address (Ultra-fast single-call with local cache sync)
    */
   async addAddress(newAddress) {
     const payload = {
@@ -88,28 +121,32 @@ export const addressService = {
       isDefault: !!newAddress.isDefault,
     };
 
+    // 1. Read existing local cache immediately
+    const cached = await this.getLocalCachedAddresses();
+
     try {
+      // 2. Single POST request
       const response = await api.post('/addresses', payload);
       const saved = normalizeAddress(response.data || response);
 
-      // Refresh and sync local cache
-      const cached = await this.getAddresses();
+      // 3. Update local cache directly without secondary network fetch
       let updatedList = cached.filter((a) => a.id !== saved.id);
       if (saved.isDefault) {
         updatedList = updatedList.map((a) => ({ ...a, isDefault: false }));
       }
       updatedList = [saved, ...updatedList];
-      await AsyncStorage.setItem(
-        Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
-        JSON.stringify(updatedList)
-      );
 
-      // Auto-remember as selected checkout address
-      await this.setSelectedCheckoutAddress(saved);
+      await Promise.all([
+        AsyncStorage.setItem(
+          Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
+          JSON.stringify(updatedList)
+        ),
+        this.setSelectedCheckoutAddress(saved),
+      ]);
+
       return saved;
     } catch (e) {
       // Local fallback for offline/guest mode
-      const cached = await this.getAddresses();
       const addressItem = normalizeAddress({
         ...payload,
         id: 'addr_' + Date.now(),
@@ -122,17 +159,20 @@ export const addressService = {
       }
       updatedList = [addressItem, ...updatedList];
 
-      await AsyncStorage.setItem(
-        Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
-        JSON.stringify(updatedList)
-      );
-      await this.setSelectedCheckoutAddress(addressItem);
+      await Promise.all([
+        AsyncStorage.setItem(
+          Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
+          JSON.stringify(updatedList)
+        ),
+        this.setSelectedCheckoutAddress(addressItem),
+      ]);
+
       return addressItem;
     }
   },
 
   /**
-   * Update address
+   * Update address (Fast single-call with local cache sync)
    */
   async updateAddress(id, updatedData) {
     const payload = {
@@ -145,11 +185,12 @@ export const addressService = {
       pincode: updatedData.pincode || updatedData.pinCode,
     };
 
+    const cached = await this.getLocalCachedAddresses();
+
     try {
       const response = await api.put(`/addresses/${id}`, payload);
       const updated = normalizeAddress(response.data || response);
 
-      const cached = await this.getAddresses();
       const updatedList = cached.map((a) => {
         if (a.id === id || a._id === id) {
           return updated;
@@ -159,20 +200,17 @@ export const addressService = {
         }
         return a;
       });
-      await AsyncStorage.setItem(
-        Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
-        JSON.stringify(updatedList)
-      );
 
-      // If the updated address was the selected one, update remembered address
-      const selected = await this.getSelectedCheckoutAddress();
-      if (selected && (selected.id === id || selected._id === id)) {
-        await this.setSelectedCheckoutAddress(updated);
-      }
+      await Promise.all([
+        AsyncStorage.setItem(
+          Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
+          JSON.stringify(updatedList)
+        ),
+        this.setSelectedCheckoutAddress(updated),
+      ]);
 
       return updated;
     } catch (e) {
-      const cached = await this.getAddresses();
       const updatedList = cached.map((a) => {
         if (a.id === id || a._id === id) {
           return normalizeAddress({ ...a, ...payload, id });
@@ -182,6 +220,7 @@ export const addressService = {
         }
         return a;
       });
+
       await AsyncStorage.setItem(
         Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
         JSON.stringify(updatedList)
@@ -195,29 +234,27 @@ export const addressService = {
    * Delete address
    */
   async deleteAddress(id) {
-    try {
-      await api.delete(`/addresses/${id}`);
-    } catch (e) {}
-
-    const cached = await this.getAddresses();
+    const cached = await this.getLocalCachedAddresses();
     const filtered = cached.filter((a) => a.id !== id && a._id !== id);
 
-    // If deleted address was default and other addresses exist, set first as default
     if (filtered.length > 0 && !filtered.some((a) => a.isDefault)) {
       filtered[0].isDefault = true;
     }
 
+    // Update storage immediately
     await AsyncStorage.setItem(
       Config.STORAGE_KEYS.DELIVERY_ADDRESSES,
       JSON.stringify(filtered)
     );
 
-    // Clear remembered checkout address if it was deleted
     const selected = await this.getSelectedCheckoutAddress();
     if (selected && (selected.id === id || selected._id === id)) {
       const newSelected = filtered.find((a) => a.isDefault) || filtered[0] || null;
       await this.setSelectedCheckoutAddress(newSelected);
     }
+
+    // Fire delete in background
+    api.delete(`/addresses/${id}`).catch(() => {});
 
     return { success: true };
   },
@@ -226,15 +263,7 @@ export const addressService = {
    * Set Default Delivery Address
    */
   async setDefaultAddress(id) {
-    try {
-      await api.patch(`/addresses/${id}/set-default`);
-    } catch (e) {
-      try {
-        await api.put(`/addresses/${id}`, { isDefault: true });
-      } catch (err) {}
-    }
-
-    const cached = await this.getAddresses();
+    const cached = await this.getLocalCachedAddresses();
     const updatedList = cached.map((a) => ({
       ...a,
       isDefault: a.id === id || a._id === id,
@@ -249,6 +278,12 @@ export const addressService = {
     if (defaultAddr) {
       await this.setSelectedCheckoutAddress(defaultAddr);
     }
+
+    // Fire API update in background
+    api.patch(`/addresses/${id}/set-default`).catch(() => {
+      api.put(`/addresses/${id}`, { isDefault: true }).catch(() => {});
+    });
+
     return defaultAddr;
   },
 

@@ -83,15 +83,10 @@ export const AddAddressScreen = ({ route, navigation }) => {
     try {
       if (isEditing) {
         await addressService.updateAddress(addressToEdit.id || addressToEdit._id, payload);
-        Alert.alert('Address Updated', 'Delivery address details saved successfully.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
       } else {
         await addressService.addAddress(payload);
-        Alert.alert('Address Saved', 'New delivery address added successfully.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
       }
+      navigation.goBack();
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to save delivery address');
     } finally {

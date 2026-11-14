@@ -28,10 +28,19 @@ export const AddressScreen = ({ route, navigation }) => {
   }, [navigation, isAuthenticated]);
 
   const loadAddresses = async () => {
-    setLoading(true);
+    const cached = await addressService.getLocalCachedAddresses();
+    if (cached.length > 0) {
+      setAddresses(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     try {
-      const data = await addressService.getAddresses();
-      setAddresses(data);
+      const data = await addressService.getAddresses(true);
+      if (data && data.length > 0) {
+        setAddresses(data);
+      }
     } catch (e) {
       console.warn('Error loading addresses', e);
     } finally {

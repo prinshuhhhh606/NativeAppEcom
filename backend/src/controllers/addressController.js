@@ -8,7 +8,9 @@ const shippingService = require('../services/shippingService');
  * GET /api/addresses
  */
 const getAllAddresses = asyncHandler(async (req, res) => {
-  const addresses = await Address.find({ user: req.user._id }).sort({ isDefault: -1, createdAt: -1 });
+  const addresses = await Address.find({ user: req.user._id })
+    .sort({ isDefault: -1, createdAt: -1 })
+    .lean();
   return successResponse(res, addresses, 'Addresses retrieved successfully');
 });
 
@@ -58,12 +60,15 @@ const createAddress = asyncHandler(async (req, res) => {
     if (!enrichedState) enrichedState = pinDetails.state;
   }
 
-  // If this address is set as default or is user's first address, unset others
-  const existingCount = await Address.countDocuments({ user: req.user._id });
-  const shouldBeDefault = isDefault || existingCount === 0;
+  // Quick check: if isDefault or user's first address, unset others
+  let shouldBeDefault = Boolean(isDefault);
+  if (!shouldBeDefault) {
+    const hasAddress = await Address.exists({ user: req.user._id });
+    if (!hasAddress) shouldBeDefault = true;
+  }
 
   if (shouldBeDefault) {
-    await Address.updateMany({ user: req.user._id }, { isDefault: false });
+    await Address.updateMany({ user: req.user._id }, { $set: { isDefault: false } });
   }
 
   const address = await Address.create({

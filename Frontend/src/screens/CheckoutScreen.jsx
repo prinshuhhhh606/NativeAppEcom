@@ -22,15 +22,20 @@ export const CheckoutScreen = ({ navigation }) => {
 
   const loadAddress = async () => {
     try {
-      const list = await addressService.getAddresses();
       const remembered = await addressService.getSelectedCheckoutAddress();
+      if (remembered) {
+        setSelectedAddress(remembered);
+        setLoadingAddress(false);
+      }
+
+      const list = await addressService.getAddresses();
       const matched =
         remembered &&
         list.find((a) => a.id === remembered.id || a._id === remembered._id);
 
       const defaultAddr = matched || list.find((a) => a.isDefault) || list[0] || null;
-      setSelectedAddress(defaultAddr);
       if (defaultAddr) {
+        setSelectedAddress(defaultAddr);
         await addressService.setSelectedCheckoutAddress(defaultAddr);
       }
     } catch (e) {
