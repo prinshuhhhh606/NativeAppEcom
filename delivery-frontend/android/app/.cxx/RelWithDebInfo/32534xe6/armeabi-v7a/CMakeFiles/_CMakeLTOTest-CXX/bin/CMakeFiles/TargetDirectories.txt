@@ -1,0 +1,4 @@
+C:/Users/pr452/Desktop/AppEcom/delivery-frontend/android/app/.cxx/RelWithDebInfo/32534xe6/armeabi-v7a/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
+C:/Users/pr452/Desktop/AppEcom/delivery-frontend/android/app/.cxx/RelWithDebInfo/32534xe6/armeabi-v7a/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
+C:/Users/pr452/Desktop/AppEcom/delivery-frontend/android/app/.cxx/RelWithDebInfo/32534xe6/armeabi-v7a/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
+C:/Users/pr452/Desktop/AppEcom/delivery-frontend/android/app/.cxx/RelWithDebInfo/32534xe6/armeabi-v7a/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir

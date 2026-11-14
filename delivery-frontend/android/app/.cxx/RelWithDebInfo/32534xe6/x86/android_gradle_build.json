@@ -1,0 +1,80 @@
+{
+  "buildFiles": [
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\node_modules\\@react-native-async-storage\\async-storage\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\node_modules\\react-native-safe-area-context\\android\\src\\main\\jni\\CMakeLists.txt",
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\node_modules\\react-native-screens\\android\\src\\main\\jni\\CMakeLists.txt",
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\node_modules\\react-native-vector-icons\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\node_modules\\react-native\\ReactAndroid\\cmake-utils\\default-app-setup\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\pr452\\AppData\\Local\\Android\\sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\.cxx\\RelWithDebInfo\\32534xe6\\x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\pr452\\AppData\\Local\\Android\\sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\.cxx\\RelWithDebInfo\\32534xe6\\x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "appmodules::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "appmodules",
+      "output": "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\32534xe6\\obj\\x86\\libappmodules.so",
+      "runtimeFiles": [
+        "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\32534xe6\\obj\\x86\\libreact_codegen_safeareacontext.so",
+        "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\32534xe6\\obj\\x86\\libreact_codegen_rnscreens.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\d9cd681e73f552020dc6884beb2fdec5\\transformed\\fbjni-0.7.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so"
+      ]
+    },
+    "react_codegen_AsyncStorageSpec::@15af80695a6281ecf900": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_AsyncStorageSpec"
+    },
+    "react_codegen_RNVectorIconsSpec::@479809fae146501fd34d": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_RNVectorIconsSpec"
+    },
+    "react_codegen_rnscreens::@25bcbd507e98d3a854ad": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_rnscreens",
+      "output": "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\32534xe6\\obj\\x86\\libreact_codegen_rnscreens.so",
+      "runtimeFiles": [
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\d9cd681e73f552020dc6884beb2fdec5\\transformed\\fbjni-0.7.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so"
+      ]
+    },
+    "react_codegen_safeareacontext::@7984cd80db47aa7b952a": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_safeareacontext",
+      "output": "C:\\Users\\pr452\\Desktop\\AppEcom\\delivery-frontend\\android\\app\\build\\intermediates\\cxx\\RelWithDebInfo\\32534xe6\\obj\\x86\\libreact_codegen_safeareacontext.so",
+      "runtimeFiles": [
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\d9cd681e73f552020dc6884beb2fdec5\\transformed\\fbjni-0.7.0\\prefab\\modules\\fbjni\\libs\\android.x86\\libfbjni.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\jsi\\libs\\android.x86\\libjsi.so",
+        "C:\\Users\\pr452\\.gradle\\caches\\9.4.1\\transforms\\7e0f1a573794f8bc9f29ec7be0990376\\transformed\\react-android-0.88.1-release\\prefab\\modules\\reactnative\\libs\\android.x86\\libreactnative.so"
+      ]
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "C:\\Users\\pr452\\AppData\\Local\\Android\\sdk\\ndk\\27.1.12297006\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+      "cppCompilerExecutable": "C:\\Users\\pr452\\AppData\\Local\\Android\\sdk\\ndk\\27.1.12297006\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}
