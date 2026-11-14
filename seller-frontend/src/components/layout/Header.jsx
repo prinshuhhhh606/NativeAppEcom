@@ -28,72 +28,72 @@ export const Header = ({ onOpenSidebar }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-20 px-4 sm:px-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800">
-      {/* Left: Mobile hamburger & Greeting */}
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 sm:h-16 lg:h-20 px-3 sm:px-6 lg:px-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800 shadow-2xs select-none">
+      {/* Left: Mobile Drawer Trigger & Store Identity */}
+      <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
         <button
           onClick={onOpenSidebar}
-          className="p-2.5 text-slate-500 rounded-xl lg:hidden hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          aria-label="Open navigation sidebar"
+          className="p-2 sm:p-2.5 text-slate-600 dark:text-slate-300 rounded-xl lg:hidden hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
+          aria-label="Open navigation drawer"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <h2 className="text-sm sm:text-base lg:text-lg font-black text-slate-900 dark:text-white tracking-tight truncate max-w-[130px] xs:max-w-[170px] sm:max-w-xs md:max-w-none">
               {seller?.storeName || 'Merchant Studio'}
             </h2>
             {isApproved && (
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[10px] font-extrabold text-blue-600 dark:text-blue-400">
-                <CheckCircle className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                Verified
+              <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-[9px] sm:text-[10px] font-extrabold text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-600 dark:text-blue-400" />
+                <span className="hidden xs:inline">Verified</span>
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5">
             <span
-              className={`inline-block w-2 h-2 rounded-full ${
+              className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
                 isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-slate-400'
               }`}
             />
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {isConnected ? 'Real-Time Sync Active' : 'Connecting to Platform...'}
+            <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+              {isConnected ? 'Live Sync' : 'Connecting...'}
             </span>
           </div>
         </div>
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-2.5 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-2.5">
         {/* Bilingual Language Switcher */}
         <button
           onClick={toggleLanguage}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs"
           title="Switch Language / भाषा बदलें"
         >
           <Languages className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-          <span className="hidden sm:inline">{lang === 'en' ? 'हिन्दी' : 'English'}</span>
+          <span className="text-[10px] sm:text-xs">{lang === 'en' ? 'हिन्दी' : 'EN'}</span>
         </button>
 
         {/* Dark/Light mode toggle */}
         <button
           onClick={toggleTheme}
-          className="p-2.5 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="p-1.5 sm:p-2.5 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
           title="Toggle Color Theme"
         >
-          {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
+          {isDark ? <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />}
         </button>
 
         {/* Notifications Icon */}
         <Link
           to="/notifications"
-          className="relative p-2.5 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="relative p-1.5 sm:p-2.5 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
           title="Notifications"
         >
-          <Bell className="w-5 h-5" />
+          <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
           {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-extrabold text-white ring-2 ring-white dark:ring-slate-900 animate-pulse">
+            <span className="absolute top-1 right-1 flex h-3.5 min-w-[14px] sm:h-4 sm:min-w-[16px] px-0.5 items-center justify-center rounded-full bg-rose-500 text-[9px] sm:text-[10px] font-black text-white ring-2 ring-white dark:ring-slate-900 animate-pulse">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
@@ -103,16 +103,16 @@ export const Header = ({ onOpenSidebar }) => {
         <div className="relative">
           <button
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-            className="flex items-center gap-3 p-1.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+            className="flex items-center gap-2 p-1 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
           >
             {seller?.storeLogo ? (
               <img
                 src={seller.storeLogo}
                 alt={seller.name}
-                className="w-10 h-10 rounded-xl object-cover ring-2 ring-blue-500/30"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover ring-2 ring-blue-500/30"
               />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md shadow-blue-500/20">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-extrabold text-xs sm:text-sm shadow-md shadow-blue-500/20">
                 {(seller?.name || 'V').charAt(0).toUpperCase()}
               </div>
             )}

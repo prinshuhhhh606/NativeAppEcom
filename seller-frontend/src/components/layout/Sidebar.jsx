@@ -22,6 +22,7 @@ import {
   HelpCircle,
   ChevronRight,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -92,20 +93,31 @@ export const Sidebar = ({ isOpen, onClose }) => {
         }`}
       >
         {/* Brand Header */}
-        <div className="flex items-center gap-3.5 px-6 h-20 border-b border-slate-100 dark:border-slate-800">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 flex-shrink-0">
-            <Store className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-                BHARAT BAZAAR
+        <div className="flex items-center justify-between px-5 sm:px-6 h-16 sm:h-20 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 flex-shrink-0">
+              <Store className="w-5 h-5 sm:w-6 sm:h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white">
+                  BHARAT BAZAAR
+                </span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-extrabold tracking-wider uppercase text-gradient-primary">
+                Seller Studio Pro
               </span>
             </div>
-            <span className="text-[11px] font-extrabold tracking-wider uppercase text-gradient-primary">
-              Seller Studio Pro
-            </span>
           </div>
+
+          {/* Close button on mobile */}
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl lg:hidden hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Close sidebar"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Store Profile Card Snapshot */}

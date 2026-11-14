@@ -64,27 +64,27 @@ export const StatCard = ({
   if (gradient) {
     const cardBg = gradientCardMap[color] || gradientCardMap.blue;
     return (
-      <div className={`relative overflow-hidden rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1 ${cardBg}`}>
+      <div className={`relative overflow-hidden rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 lg:p-6 transition-all duration-300 hover:-translate-y-1 ${cardBg}`}>
         {/* Background glow circle */}
-        <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
+        <div className="absolute -right-6 -bottom-6 w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
         <div className="relative z-10 flex items-center justify-between">
-          <span className="text-xs font-bold tracking-wider uppercase text-white/80">{title}</span>
+          <span className="text-[10px] sm:text-xs font-bold tracking-wider uppercase text-white/80 truncate mr-2">{title}</span>
           {Icon && (
-            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/20">
-              <Icon className="w-6 h-6" />
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/20 flex-shrink-0">
+              <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           )}
         </div>
-        <div className="relative z-10 mt-4">
-          <h3 className="text-3xl font-extrabold tracking-tight text-white">{value}</h3>
-          <div className="mt-2.5 flex items-center gap-2">
+        <div className="relative z-10 mt-2.5 sm:mt-4">
+          <h3 className="text-lg sm:text-2xl lg:text-3xl font-black tracking-tight text-white">{value}</h3>
+          <div className="mt-1.5 sm:mt-2.5 flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {trend !== undefined && (
-              <span className="inline-flex items-center text-xs font-extrabold px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-white">
+              <span className="inline-flex items-center text-[10px] sm:text-xs font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-white">
                 {trend >= 0 ? '↑ +' : '↓ '}{Math.abs(trend)}%
               </span>
             )}
             {(subtitle || trendLabel) && (
-              <p className="text-xs font-medium text-white/80">{subtitle || trendLabel}</p>
+              <p className="text-[10px] sm:text-xs font-medium text-white/80 line-clamp-1">{subtitle || trendLabel}</p>
             )}
           </div>
         </div>
@@ -94,28 +94,28 @@ export const StatCard = ({
 
   return (
     <div
-      className={`relative overflow-hidden bg-white dark:bg-slate-900 rounded-3xl p-6 border shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover ${selectedTheme.border} ${selectedTheme.glow}`}
+      className={`relative overflow-hidden bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 lg:p-6 border shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover ${selectedTheme.border} ${selectedTheme.glow}`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate mr-2">
           {title}
         </span>
         {Icon && (
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${selectedTheme.iconBg}`}>
-            <Icon className="w-6 h-6" />
+          <div className={`w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center flex-shrink-0 ${selectedTheme.iconBg}`}>
+            <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         )}
       </div>
 
-      <div className="mt-4">
-        <h3 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+      <div className="mt-2.5 sm:mt-4">
+        <h3 className="text-lg sm:text-2xl lg:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
           {value}
         </h3>
 
-        <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+        <div className="mt-1.5 sm:mt-2.5 flex items-center gap-1.5 sm:gap-2 flex-wrap">
           {trend !== undefined && (
             <span
-              className={`inline-flex items-center text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+              className={`inline-flex items-center text-[10px] sm:text-xs font-extrabold px-1.5 sm:px-2.5 py-0.5 rounded-full ${
                 trend >= 0
                   ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
                   : 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
@@ -125,12 +125,12 @@ export const StatCard = ({
             </span>
           )}
           {badge && (
-            <span className={`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-md ${selectedTheme.trendBg}`}>
+            <span className={`inline-flex items-center text-[9px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md ${selectedTheme.trendBg}`}>
               {badge}
             </span>
           )}
           {(subtitle || trendLabel) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
               {subtitle || trendLabel}
             </p>
           )}

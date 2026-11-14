@@ -502,19 +502,19 @@ export const Orders = ({ initialMode = 'orders' }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* 1. Header & Submodule Switcher */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3.5 sm:gap-4 bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight">
               {activeModule === 'orders' ? 'Orders Management Center' : 'Shipping & Logistics Fleet'}
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-extrabold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
               Live Fulfillment
             </span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 sm:line-clamp-none">
             {activeModule === 'orders'
               ? 'Inspect customer orders, accept/reject requests, start processing, and generate tax invoices.'
               : 'Pan-India courier logistics: book Delhivery, BlueDart, DTDC, print AWB labels & schedule pickups.'}
@@ -522,17 +522,17 @@ export const Orders = ({ initialMode = 'orders' }) => {
         </div>
 
         {/* Submodule Navigation Switcher */}
-        <div className="flex items-center gap-2 bg-gray-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-gray-200 dark:border-slate-800 self-stretch sm:self-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 bg-gray-100 dark:bg-slate-900 p-1 sm:p-1.5 rounded-2xl border border-gray-200 dark:border-slate-800 w-full sm:w-auto">
           <button
             onClick={() => handleModuleSwitch('orders')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
               activeModule === 'orders'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Orders Management</span>
+            <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Orders</span>
             {statistics.totalOrders > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${activeModule === 'orders' ? 'bg-white/20 text-white' : 'bg-blue-50 dark:bg-blue-950 text-blue-600'}`}>
                 {statistics.totalOrders}
@@ -542,14 +542,14 @@ export const Orders = ({ initialMode = 'orders' }) => {
 
           <button
             onClick={() => handleModuleSwitch('shipping')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${
               activeModule === 'shipping'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            <Truck className="w-4 h-4" />
-            <span>Shipping & Logistics</span>
+            <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Shipping</span>
             {statistics.readyToShipOrders + statistics.shippedOrders > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${activeModule === 'shipping' ? 'bg-white/20 text-white' : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600'}`}>
                 {statistics.readyToShipOrders + statistics.shippedOrders}
@@ -594,7 +594,7 @@ export const Orders = ({ initialMode = 'orders' }) => {
       </div>
 
       {/* 3. Search & Filter Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-white dark:bg-slate-800 p-4 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-white dark:bg-slate-800 p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
