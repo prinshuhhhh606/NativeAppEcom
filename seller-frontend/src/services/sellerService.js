@@ -51,6 +51,7 @@ export const sellerService = {
   schedulePickup: (id, data) => api.post(`/orders/${id}/schedule-pickup`, data),
   cancelShipment: (id, data) => api.post(`/orders/${id}/cancel-shipment`, data),
   getOrderInvoice: (id) => api.get(`/orders/${id}/invoice`),
+  generateHandoverOtp: (id) => api.post(`/orders/${id}/generate-handover-otp`),
 
   // Financial Earnings & Ledger
   getEarningsSummary: () => api.get('/earnings/summary'),

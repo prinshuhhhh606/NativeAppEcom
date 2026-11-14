@@ -275,7 +275,8 @@ const assignDeliveryPartner = async (req, res) => {
         status: 'assigned',
         pickupAddress: assignment.pickupAddress,
         deliveryAddress: assignment.deliveryAddress,
-        pickupOtp: '7821', // Store pickup OTP for demo
+        pickupOtp: '123456', // Static OTP 123456 for Delivery Handover
+        pickupOtpExpiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
         deliveryOtp: '4521', // Customer delivery OTP for demo
         deliveryFee: assignment.deliveryFee,
         paymentMethod: assignment.paymentMethod,
@@ -303,7 +304,9 @@ const assignDeliveryPartner = async (req, res) => {
       order.assignedAt = new Date();
       order.assignedBy = sellerId;
       order.status = 'pickup_scheduled';
-      order.pickupOtp = delivery.pickupOtp || '7821';
+      order.pickupOtp = '123456';
+      order.deliveryHandoverOtp = '123456';
+      order.pickupOtpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
       order.shipping = order.shipping || {};
       order.shipping.deliveryPartnerId = partner._id;

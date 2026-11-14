@@ -103,8 +103,9 @@ const deliverySchema = new mongoose.Schema(
     // Dual-OTP Verification Protocol
     pickupOtp: {
       type: String,
-      default: '7821',
+      default: '123456',
     },
+    pickupOtpExpiresAt: Date,
     pickupOtpVerified: {
       type: Boolean,
       default: false,

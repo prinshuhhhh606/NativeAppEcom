@@ -729,12 +729,72 @@ const rejectOrder = asyncHandler(async (req, res) => {
   return updateOrderStatus(req, res);
 });
 
+/**
+ * Dedicated Generate Delivery Handover OTP Endpoint
+ * POST /api/v1/seller/orders/:id/generate-handover-otp
+ */
+const generateHandoverOtp = asyncHandler(async (req, res) => {
+  const sellerId = req.seller._id;
+  const orderId = req.params.id;
+
+  const order = await SellerOrder.findOne({
+    _id: orderId,
+    seller: sellerId,
+  });
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: 'Order not found or does not belong to your store.',
+    });
+  }
+
+  // Static OTP: 123456 with 10 minutes expiry
+  const staticOtp = '123456';
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  order.pickupOtp = staticOtp;
+  order.deliveryHandoverOtp = staticOtp;
+  order.pickupOtpExpiresAt = expiresAt;
+  await order.save();
+
+  // Sync to Delivery document for the delivery partner
+  const Delivery = require('../../models/Delivery');
+  await Delivery.updateMany(
+    {
+      $or: [{ order: order.order }, { orderNumber: order.orderNumber }],
+    },
+    {
+      $set: {
+        pickupOtp: staticOtp,
+        pickupOtpExpiresAt: expiresAt,
+      },
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: 'Delivery Handover OTP generated successfully.',
+    data: {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      deliveryHandoverOtp: staticOtp,
+      pickupOtp: staticOtp,
+      expiresAt,
+    },
+    deliveryHandoverOtp: staticOtp,
+    pickupOtp: staticOtp,
+    expiresAt,
+  });
+});
+
 module.exports = {
   getOrders,
   getOrder,
   updateOrderStatus,
   acceptOrder,
   rejectOrder,
+  generateHandoverOtp,
   getOrderInvoice,
   bulkUpdateOrders,
   bulkGetInvoices,

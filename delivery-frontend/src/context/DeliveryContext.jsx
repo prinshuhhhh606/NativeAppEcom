@@ -393,17 +393,17 @@ export const DeliveryProvider = ({ children }) => {
         await fetchActiveDeliveries();
 
         Alert.alert(
-          'Pickup Verified',
-          'Package marked as picked up. Proceed to customer doorstep.'
+          'Handover Verified',
+          'Order successfully handed over to you! Proceed to customer doorstep.'
         );
 
         return response;
       } catch (error) {
         Alert.alert(
-          'Pickup Verification Failed',
+          'Handover Verification Failed',
           getErrorMessage(
             error,
-            'Incorrect store pickup OTP'
+            'Incorrect Delivery Handover OTP'
           )
         );
 

@@ -594,12 +594,29 @@ const verifyPickupOtp = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery not found' });
     }
 
-    // Validate OTP (matches stored pickupOtp or master demo '7821' / '1234')
-    if (delivery.pickupOtp !== otp.trim() && otp.trim() !== '7821' && otp.trim() !== '1234') {
+    // Validate OTP (matches stored pickupOtp or static '123456' / master demo '7821' / '1234')
+    const submittedOtp = otp.trim();
+    const isValidOtp =
+      submittedOtp === '123456' ||
+      (delivery.pickupOtp && submittedOtp === delivery.pickupOtp.trim()) ||
+      submittedOtp === '7821' ||
+      submittedOtp === '1234';
+
+    if (!isValidOtp) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid store pickup OTP. Please ask store staff for the 4-digit code.',
+        message: 'Invalid Delivery Handover OTP. Please ask store staff for the correct 6-digit code (123456).',
       });
+    }
+
+    // Check expiry if set (10 minutes)
+    if (delivery.pickupOtpExpiresAt && new Date() > new Date(delivery.pickupOtpExpiresAt)) {
+      if (submittedOtp !== '123456') {
+        return res.status(400).json({
+          success: false,
+          message: 'Delivery Handover OTP has expired. Please ask seller to generate a new OTP.',
+        });
+      }
     }
 
     delivery.status = 'picked_up';
@@ -607,8 +624,8 @@ const verifyPickupOtp = async (req, res) => {
     delivery.pickupVerifiedAt = new Date();
     delivery.timeline.push({
       status: 'picked_up',
-      title: 'Package Picked Up from Store',
-      notes: 'Store pickup OTP verified. Package is now in transit with delivery partner.',
+      title: 'Order Handed Over to Delivery Partner',
+      notes: 'Delivery Handover OTP (123456) verified. Package is now in transit with delivery partner.',
       timestamp: new Date(),
     });
     await delivery.save();

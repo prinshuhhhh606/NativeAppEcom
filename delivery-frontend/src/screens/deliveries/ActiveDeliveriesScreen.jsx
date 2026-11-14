@@ -164,10 +164,10 @@ export const ActiveDeliveriesScreen = () => {
     const otp = pickupOtpInput.trim();
     const deliveryId = getDeliveryId(pickupModalDelivery);
 
-    if (!/^\d{4}$/.test(otp)) {
+    if (!/^\d{4,6}$/.test(otp)) {
       Alert.alert(
         'Invalid OTP',
-        'Enter the correct 4-digit store pickup OTP.'
+        'Enter the 6-digit Delivery Handover OTP provided by the seller (123456).'
       );
       return;
     }
@@ -373,18 +373,18 @@ export const ActiveDeliveriesScreen = () => {
                 {pickupModalDelivery?.pickupAddress?.storeName ||
                   'Merchant'}
               </Text>{' '}
-              for the 4-digit package handover OTP.
+              for the 6-digit Delivery Handover OTP (123456).
             </Text>
 
             <TextInput
               style={styles.otpInput}
               value={pickupOtpInput}
               onChangeText={(value) =>
-                setPickupOtpInput(value.replace(/\D/g, '').slice(0, 4))
+                setPickupOtpInput(value.replace(/\D/g, '').slice(0, 6))
               }
               keyboardType="number-pad"
-              maxLength={4}
-              placeholder="••••"
+              maxLength={6}
+              placeholder="123456"
               placeholderTextColor="#94A3B8"
               editable={!submitting}
               autoFocus

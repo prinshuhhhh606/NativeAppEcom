@@ -79,6 +79,7 @@ router.post('/orders/bulk-invoices', protectSeller, requireApprovedSeller, order
 router.get('/orders/:id', protectSeller, orderController.getOrder);
 router.post('/orders/:id/accept', protectSeller, orderController.acceptOrder);
 router.post('/orders/:id/reject', protectSeller, orderController.rejectOrder);
+router.post('/orders/:id/generate-handover-otp', protectSeller, orderController.generateHandoverOtp);
 router.patch('/orders/:id/status', protectSeller, orderController.updateOrderStatus);
 router.put('/orders/:id/status', protectSeller, orderController.updateOrderStatus);
 router.put('/orders/:id/tracking', protectSeller, orderController.updateOrderStatus);
