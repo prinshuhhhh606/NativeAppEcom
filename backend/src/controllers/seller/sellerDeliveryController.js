@@ -303,6 +303,7 @@ const assignDeliveryPartner = async (req, res) => {
       order.assignedAt = new Date();
       order.assignedBy = sellerId;
       order.status = 'pickup_scheduled';
+      order.pickupOtp = delivery.pickupOtp || '7821';
 
       order.shipping = order.shipping || {};
       order.shipping.deliveryPartnerId = partner._id;

@@ -190,6 +190,7 @@ const sellerOrderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Seller',
     },
+    pickupOtp: { type: String, default: '7821' },
 
     // Courier & Shipping Details (Shiprocket / Pan-India Multi-Courier Ready)
     shipping: {

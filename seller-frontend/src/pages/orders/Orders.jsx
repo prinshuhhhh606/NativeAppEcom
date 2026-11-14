@@ -1599,6 +1599,28 @@ export const Orders = ({ initialMode = 'orders' }) => {
                     Order handed over to Delivery Partner. Delivery progress (Picked Up, Out for Delivery, Delivered) is managed exclusively by the Delivery Partner via the Delivery App.
                   </span>
                 </div>
+
+                {/* Store Pickup OTP display for seller */}
+                {['pickup_scheduled', 'in_transit', 'packed', 'assigned'].includes(selectedOrder.status) && (
+                  <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+                        🔐
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-black text-amber-900 dark:text-amber-200 uppercase tracking-wide block">
+                          Store Pickup OTP: <span className="font-mono text-sm text-amber-950 dark:text-white font-extrabold">{selectedOrder.pickupOtp || '7821'}</span>
+                        </span>
+                        <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                          Rider ko parcel handover karte waqt yeh 4-digit code share karein verification ke liye.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-100 font-mono font-black text-sm tracking-widest border border-amber-300 dark:border-amber-700">
+                      {selectedOrder.pickupOtp || '7821'}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
