@@ -156,15 +156,22 @@ class SocketService {
         data?.subOrderNumber,
       ]
         .filter(Boolean)
-        .map((s) => String(s).toLowerCase());
+        .map((s) => String(s).trim().toLowerCase().replace(/^[#\s]+/, ''));
 
       for (const [subKey, sub] of this.activeSubscriptions.entries()) {
-        const subKeyLower = String(subKey).toLowerCase();
-        // Match exact or substring if IDs differ only in prefix
+        const subKeyLower = String(subKey).trim().toLowerCase().replace(/^[#\s]+/, '');
+        const allKnown = Array.isArray(sub?.allAliases)
+          ? sub.allAliases.map((a) => String(a).trim().toLowerCase().replace(/^[#\s]+/, ''))
+          : [subKeyLower];
+
+        // Match if any candidate matches any known alias, or if broadcast
         const match =
           candidates.length === 0 ||
-          candidates.includes(subKeyLower) ||
-          candidates.some((c) => c.includes(subKeyLower) || subKeyLower.includes(c));
+          candidates.some(
+            (c) =>
+              allKnown.includes(c) ||
+              allKnown.some((a) => a.includes(c) || c.includes(a))
+          );
 
         if (match && sub && typeof sub[cbName] === 'function') {
           try {
@@ -234,30 +241,77 @@ class SocketService {
 
   /**
    * Subscribe to Live Order Tracking (Customer / Seller / Admin)
+   * Supports single orderId, array of aliases, or order object
    */
-  async subscribeToOrder(orderId, callbacks = {}) {
-    if (!orderId) return;
+  async subscribeToOrder(orderIdOrAliases, callbacks = {}) {
+    if (!orderIdOrAliases) return;
 
-    const existing = this.activeSubscriptions.get(orderId) || {};
-    this.activeSubscriptions.set(orderId, { ...existing, ...callbacks });
+    let primaryKey = '';
+    let aliases = [];
+
+    if (Array.isArray(orderIdOrAliases)) {
+      aliases = orderIdOrAliases.filter(Boolean).map((s) => String(s).trim());
+      primaryKey = aliases[0] || '';
+    } else if (typeof orderIdOrAliases === 'object' && orderIdOrAliases !== null) {
+      primaryKey = String(orderIdOrAliases.orderId || orderIdOrAliases._id || orderIdOrAliases.id || orderIdOrAliases.orderNumber || '').trim();
+      aliases = [
+        orderIdOrAliases.orderId,
+        orderIdOrAliases.orderNumber,
+        orderIdOrAliases._id,
+        orderIdOrAliases.id,
+        orderIdOrAliases.parentOrderId,
+      ].filter(Boolean).map((s) => String(s).trim());
+    } else {
+      primaryKey = String(orderIdOrAliases).trim();
+      aliases = [primaryKey];
+    }
+
+    if (!primaryKey) return;
+
+    const existing = this.activeSubscriptions.get(primaryKey) || {};
+    const mergedAliases = Array.from(new Set([...(existing.allAliases || []), ...aliases]));
+
+    this.activeSubscriptions.set(primaryKey, {
+      ...existing,
+      ...callbacks,
+      allAliases: mergedAliases,
+    });
+
+    // Also register aliases individually so lookup by any alias finds this subscription
+    mergedAliases.forEach((alias) => {
+      if (alias !== primaryKey && !this.activeSubscriptions.has(alias)) {
+        this.activeSubscriptions.set(alias, {
+          ...existing,
+          ...callbacks,
+          allAliases: mergedAliases,
+        });
+      }
+    });
 
     const socket = await this.getSocket();
     if (socket && (this.isConnected || socket.connected)) {
-      socket.emit('join_order_tracking', { orderId });
+      mergedAliases.forEach((alias) => {
+        socket.emit('join_order_tracking', { orderId: alias });
+      });
     }
   }
 
   /**
    * Unsubscribe from Order Tracking
    */
-  unsubscribeFromOrder(orderId) {
-    if (!orderId) return;
+  unsubscribeFromOrder(orderIdOrAliases) {
+    if (!orderIdOrAliases) return;
 
-    this.activeSubscriptions.delete(orderId);
+    const targets = Array.isArray(orderIdOrAliases)
+      ? orderIdOrAliases.filter(Boolean).map((s) => String(s).trim())
+      : [String(orderIdOrAliases).trim()];
 
-    if (this.socket && this.isConnected) {
-      this.socket.emit('leave_order_tracking', { orderId });
-    }
+    targets.forEach((target) => {
+      this.activeSubscriptions.delete(target);
+      if (this.socket && this.isConnected) {
+        this.socket.emit('leave_order_tracking', { orderId: target });
+      }
+    });
   }
 
   /**

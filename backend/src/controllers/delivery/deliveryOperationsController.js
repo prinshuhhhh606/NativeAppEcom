@@ -654,6 +654,23 @@ const verifyPickupOtp = async (req, res) => {
       pickedUpAt: delivery.pickupVerifiedAt,
     });
 
+    // Immediate real-time broadcast to Live Tracking screen
+    try {
+      const pickupPayload = {
+        orderId: delivery.orderNumber,
+        orderNumber: delivery.orderNumber,
+        status: 'picked_up',
+        orderStatus: 'picked_up',
+        pickedUpAt: delivery.pickupVerifiedAt,
+        timestamp: new Date().toISOString(),
+      };
+      emitToTrackingRoom(delivery.orderNumber, 'status_updated', pickupPayload);
+      emitToOrder(delivery.orderNumber, 'order:status_updated', pickupPayload);
+      if (delivery.order) {
+        emitToOrder(delivery.order.toString(), 'order:status_updated', pickupPayload);
+      }
+    } catch (e) {}
+
     return res.status(200).json({
       success: true,
       message: 'Pickup OTP verified! Package is now marked Picked Up.',
@@ -1100,17 +1117,41 @@ const verifyDeliveryOtp = async (req, res) => {
       const updatedOrder = await Order.findOneAndUpdate(orderFilter, { $set: orderUpdate }, { new: true });
       if (updatedOrder) {
         try {
-          emitOrderStatusUpdated(updatedOrder);
-          emitToTrackingRoom(updatedOrder.orderId || updatedOrder.orderNumber, 'status_updated', {
+          const deliveredPayload = {
+            orderId: updatedOrder.orderNumber || updatedOrder.orderId || delivery.orderNumber,
+            orderNumber: updatedOrder.orderNumber || delivery.orderNumber,
+            _id: updatedOrder._id ? updatedOrder._id.toString() : '',
+            id: updatedOrder._id ? updatedOrder._id.toString() : '',
             orderStatus: 'Delivered',
-            deliveredAt: updatedOrder.deliveredAt,
-          });
-        } catch (e) {}
+            status: 'Delivered',
+            deliveredAt: updatedOrder.deliveredAt || delivery.deliveredAt,
+            deliveryOtpVerified: true,
+            isDelivered: true,
+            timestamp: new Date().toISOString(),
+          };
+          emitOrderStatusUpdated(updatedOrder, deliveredPayload);
+          emitToTrackingRoom(updatedOrder.orderNumber || delivery.orderNumber, 'status_updated', deliveredPayload);
+          if (updatedOrder._id) {
+            emitToTrackingRoom(updatedOrder._id.toString(), 'status_updated', deliveredPayload);
+            emitToOrder(updatedOrder._id.toString(), 'order:status_updated', deliveredPayload);
+          }
+          if (delivery.orderNumber) {
+            emitToTrackingRoom(delivery.orderNumber, 'status_updated', deliveredPayload);
+            emitToOrder(delivery.orderNumber, 'order:status_updated', deliveredPayload);
+          }
+          if (updatedOrder.user) {
+            emitToCustomer(updatedOrder.user.toString(), 'customer:order_status_updated', deliveredPayload);
+            emitToCustomer(updatedOrder.user.toString(), 'order:status_updated', deliveredPayload);
+          }
+        } catch (e) {
+          console.warn('Delivered socket broadcast error:', e.message);
+        }
       }
 
       // Synchronize Seller Sub-Orders
       const sellerOrderUpdate = {
         status: 'delivered',
+        deliveredAt: new Date(),
         ...(delivery.paymentMethod === 'COD' ? { paymentStatus: 'Completed' } : {}),
       };
       await SellerOrder.updateMany(
@@ -1140,12 +1181,19 @@ const verifyDeliveryOtp = async (req, res) => {
       }
     }
 
-    // Emit Real-Time Socket Events
-    emitToTrackingRoom(delivery.orderNumber, 'status_updated', {
+    // Emit Real-Time Socket Events to All Interested Rooms
+    const finalDeliveredPayload = {
+      orderId: delivery.orderNumber,
+      orderNumber: delivery.orderNumber,
       orderStatus: 'Delivered',
       status: 'Delivered',
       deliveredAt: delivery.deliveredAt,
-    });
+      deliveryOtpVerified: true,
+      isDelivered: true,
+      timestamp: new Date().toISOString(),
+    };
+    emitToTrackingRoom(delivery.orderNumber, 'status_updated', finalDeliveredPayload);
+    emitToOrder(delivery.orderNumber, 'order:status_updated', finalDeliveredPayload);
     emitToSeller(delivery.seller, 'delivery:delivered', {
       deliveryNumber: delivery.deliveryNumber,
       orderNumber: delivery.orderNumber,

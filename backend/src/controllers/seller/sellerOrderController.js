@@ -354,16 +354,31 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
         orderId: order.orderNumber,
         orderNumber: order.orderNumber,
         parentOrderId: order.order ? order.order.toString() : '',
+        _id: order.order ? order.order.toString() : (order._id ? order._id.toString() : ''),
+        id: order.order ? order.order.toString() : (order._id ? order._id.toString() : ''),
         subOrderNumber: order.subOrderNumber,
         status: targetStatus,
         orderStatus: targetStatus,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       };
       emitToOrder(order.orderNumber, 'order:status_updated', trackingPayload);
+      emitToOrder(order.orderNumber, 'status_updated', trackingPayload);
       if (order.order) {
         emitToOrder(order.order.toString(), 'order:status_updated', trackingPayload);
+        emitToOrder(order.order.toString(), 'status_updated', trackingPayload);
       }
-      emitToOrder(order.subOrderNumber, 'order:status_updated', trackingPayload);
+      if (order.subOrderNumber) {
+        emitToOrder(order.subOrderNumber, 'order:status_updated', trackingPayload);
+        emitToOrder(order.subOrderNumber, 'status_updated', trackingPayload);
+      }
+      if (order.user) {
+        emitToCustomer(order.user.toString(), 'customer:order_status_updated', trackingPayload);
+        emitToCustomer(order.user.toString(), 'order:status_updated', trackingPayload);
+      }
+
+      // Global real-time broadcast so open Live Tracking screens update instantly
+      io.emit('order:status_updated', trackingPayload);
+      io.emit('status_updated', trackingPayload);
     }
   } catch (err) {}
 

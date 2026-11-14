@@ -215,11 +215,21 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     return Boolean(socketService.isConnected || socketService.socket?.connected);
   }, []);
 
-  const loadOrder = useCallback(async () => {
+  const getStatusRank = useCallback((status) => {
+    if (!status) return 0;
+    const normalized = String(status).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return STATUS_RANK[normalized] ?? 0;
+  }, []);
+
+  const loadOrder = useCallback(async (isSilent = false) => {
     const activeTargetId = targetOrderId || initialOrderId;
     if (!activeTargetId) {
       if (isMountedRef.current) setLoading(false);
       return;
+    }
+
+    if (!isSilent && isMountedRef.current && !order) {
+      setLoading(true);
     }
 
     if (loadOrderRef.current && loadOrderRef.current.orderId === activeTargetId) {
@@ -233,7 +243,21 @@ export const TrackOrderScreen = ({ route, navigation }) => {
           return data;
         }
         if (data) {
-          setOrder(data);
+          setOrder((prev) => {
+            if (!prev) return data;
+            const prevRank = getStatusRank(prev.orderStatus || prev.status);
+            const newRank = getStatusRank(data.orderStatus || data.status);
+            // Protect against race condition: don't downgrade a live WebSocket update with an older HTTP response
+            if (prevRank > newRank && newRank >= 0) {
+              return {
+                ...data,
+                orderStatus: prev.orderStatus || prev.status,
+                status: prev.status || prev.orderStatus,
+                trackingTimeline: prev.trackingTimeline?.length ? prev.trackingTimeline : data.trackingTimeline,
+              };
+            }
+            return data;
+          });
 
           if (data.deliveryPartner) {
             setDeliveryPartner(data.deliveryPartner);
@@ -278,14 +302,14 @@ export const TrackOrderScreen = ({ route, navigation }) => {
 
     loadOrderRef.current = { orderId: activeTargetId, promise: fetchPromise };
     return fetchPromise;
-  }, [targetOrderId, initialOrderId, passedOrder]);
+  }, [targetOrderId, initialOrderId, passedOrder, getStatusRank, order]);
 
   useEffect(() => {
     if (!targetOrderId && !initialOrderId) return;
     loadOrder();
   }, [loadOrder, targetOrderId, initialOrderId]);
 
-  // Real-Time Socket.IO Live Synchronization + Polling Fallback
+  // Real-Time Socket.IO Live Synchronization + High-Frequency Adaptive Polling Fallback
   useEffect(() => {
     if (!targetOrderId) return;
 
@@ -298,34 +322,49 @@ export const TrackOrderScreen = ({ route, navigation }) => {
       }
     };
 
-    const startPolling = () => {
+    const startAdaptivePolling = () => {
       stopPolling();
       if (cancelled || !isMountedRef.current) return;
+
+      // When disconnected: aggressive 2.5s poll to ensure immediate recovery
+      // When connected: 5s background heartbeat for active orders to guarantee zero-missed transitions
+      const intervalMs = getSocketConnectionState() ? 5000 : 2500;
+
       pollIntervalRef.current = setInterval(() => {
         if (cancelled || !isMountedRef.current) return;
-        if (getSocketConnectionState()) {
-          stopPolling();
-          return;
-        }
-        loadOrder();
-      }, 30000);
+        loadOrder(true);
+      }, intervalMs);
     };
+
+    const allTrackingAliases = Array.from(
+      new Set(
+        [
+          targetOrderId,
+          initialOrderId,
+          order?._id,
+          order?.orderId,
+          order?.orderNumber,
+          passedOrder?._id,
+          passedOrder?.orderId,
+          passedOrder?.orderNumber,
+        ]
+          .filter(Boolean)
+          .map((s) => String(s).trim())
+      )
+    );
 
     const setupLiveTrackingSocket = async () => {
       try {
         await socketService.connect();
         if (cancelled) return;
+
         unsubscribeConn = socketService.onConnectionChange((connected) => {
           if (cancelled || !isMountedRef.current) return;
           setIsSocketConnected(connected);
-          if (connected) {
-            stopPolling();
-            return;
-          }
-          startPolling();
+          startAdaptivePolling();
         });
 
-        socketService.subscribeToOrder(targetOrderId, {
+        socketService.subscribeToOrder(allTrackingAliases, {
           onLocation: (locData) => {
             if (cancelled || !isMountedRef.current) return;
             if (locData?.latitude && locData?.longitude) {
@@ -365,25 +404,25 @@ export const TrackOrderScreen = ({ route, navigation }) => {
                 ...(statusData.deliveryPartner ? { deliveryPartner: statusData.deliveryPartner } : {}),
                 ...(statusData.timeline ? { timeline: statusData.timeline } : {}),
                 ...(statusData.trackingTimeline ? { trackingTimeline: statusData.trackingTimeline } : {}),
+                ...(statusData.deliveredAt ? { deliveredAt: statusData.deliveredAt } : {}),
               }));
-              loadOrder();
+              // Instant silent background refresh without spinner
+              loadOrder(true);
             }
           },
           onPartner: (partnerData) => {
             if (cancelled || !isMountedRef.current) return;
             if (partnerData?.partner || partnerData?.deliveryPartner) {
               setDeliveryPartner(partnerData.partner || partnerData.deliveryPartner);
-              loadOrder();
+              loadOrder(true);
             }
           },
         });
 
-        if (!getSocketConnectionState()) {
-          startPolling();
-        }
+        startAdaptivePolling();
       } catch (err) {
         console.warn('[TrackOrder] Socket initialization warning:', err?.message);
-        startPolling();
+        startAdaptivePolling();
       }
     };
 
@@ -392,10 +431,10 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     return () => {
       cancelled = true;
       stopPolling();
-      socketService.unsubscribeFromOrder(targetOrderId);
+      socketService.unsubscribeFromOrder(allTrackingAliases);
       if (unsubscribeConn) unsubscribeConn();
     };
-  }, [targetOrderId, getSocketConnectionState, loadOrder]);
+  }, [targetOrderId, getSocketConnectionState, loadOrder, initialOrderId]);
 
   const handleCallPartner = (phone) => {
     if (phone) {

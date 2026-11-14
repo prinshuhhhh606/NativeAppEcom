@@ -477,6 +477,10 @@ if (!parentOrder) {
           });
         }
         io.to('admin_room').emit('order_status_updated', payload);
+
+        // Immediate broadcast for active Live Tracking customer screens
+        io.emit('order:status_updated', payload);
+        io.emit('status_updated', payload);
       }
     } catch (sockErr) {
       console.warn('[orderSync] Socket broadcast warning:', sockErr?.message);

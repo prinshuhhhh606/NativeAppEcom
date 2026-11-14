@@ -93,37 +93,83 @@ const initSocket = (httpServer) => {
 
     // 2. Order Tracking Room Join with Authorization Verification
     socket.on('join_order_tracking', async (data) => {
-      const orderId = typeof data === 'object' ? data?.orderId : data;
-      if (!orderId) return;
+      const rawId = typeof data === 'object' ? (data?.orderId || data?.orderNumber || data?.id || data?._id) : data;
+      if (!rawId) return;
+
+      const cleanId = String(rawId).trim().replace(/^[#\s]+/, '');
+      if (!cleanId) return;
 
       // Join room immediately for lowest latency
-      socket.join(`order:${orderId}`);
-      socket.join(`tracking_${orderId}`);
+      socket.join(`order:${cleanId}`);
+      socket.join(`tracking_${cleanId}`);
 
       try {
-        const order = await Order.findOne({
+        const isObjectId = /^[0-9a-fA-F]{24}$/.test(cleanId);
+        const escaped = cleanId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const caseRegex = new RegExp(`^${escaped}$`, 'i');
+
+        // Check primary Order collection
+        let order = await Order.findOne({
           $or: [
-            ...(orderId.match(/^[0-9a-fA-F]{24}$/) ? [{ _id: orderId }] : []),
-            { orderId: orderId },
-            { orderNumber: orderId },
+            ...(isObjectId ? [{ _id: cleanId }] : []),
+            { orderId: caseRegex },
+            { orderNumber: caseRegex },
+            { orderNumber: cleanId.toUpperCase() },
           ],
         });
 
+        // If not found, check SellerOrder collection
+        if (!order) {
+          const sellerOrder = await SellerOrder.findOne({
+            $or: [
+              ...(isObjectId ? [{ _id: cleanId }] : []),
+              { subOrderNumber: caseRegex },
+              { subOrderNumber: cleanId.toUpperCase() },
+              { orderNumber: caseRegex },
+              { orderNumber: cleanId.toUpperCase() },
+            ],
+          });
+          if (sellerOrder?.order) {
+            order = await Order.findById(sellerOrder.order);
+          }
+        }
+
+        // If not found, check Delivery collection
+        if (!order) {
+          const delivery = await Delivery.findOne({
+            $or: [
+              ...(isObjectId ? [{ _id: cleanId }] : []),
+              { orderNumber: caseRegex },
+              { orderNumber: cleanId.toUpperCase() },
+            ],
+          });
+          if (delivery?.order) {
+            order = await Order.findById(delivery.order);
+          }
+        }
+
         if (order) {
           const ordNum = order.orderNumber || order.orderId;
+          const ordId = order.orderId || ordNum;
           const ordMongoId = order._id.toString();
 
           socket.join(`order:${ordNum}`);
+          socket.join(`order:${ordId}`);
           socket.join(`order:${ordMongoId}`);
           socket.join(`tracking_${ordNum}`);
+          socket.join(`tracking_${ordId}`);
           socket.join(`tracking_${ordMongoId}`);
 
           console.log(`[Socket.IO] Socket ${socket.id} subscribed to live tracking for Order #${ordNum}`);
 
-          // Emit initial sync event
-          socket.emit('order:tracking_subscribed', {
+          // Instant status sync back to this client
+          const syncPayload = {
             orderId: ordNum,
+            orderNumber: ordNum,
+            _id: ordMongoId,
+            id: ordMongoId,
             status: order.orderStatus,
+            orderStatus: order.orderStatus,
             deliveryPartner: order.deliveryPartnerName
               ? {
                   name: order.deliveryPartnerName,
@@ -134,7 +180,14 @@ const initSocket = (httpServer) => {
             currentLocation: order.currentLocation,
             distanceRemainingKm: order.distanceRemainingKm,
             estimatedMinutesRemaining: order.estimatedMinutesRemaining,
-          });
+            timeline: order.trackingTimeline || [],
+            trackingTimeline: order.trackingTimeline || [],
+            timestamp: new Date().toISOString(),
+          };
+
+          socket.emit('order:status_updated', syncPayload);
+          socket.emit('status_updated', syncPayload);
+          socket.emit('order:tracking_subscribed', syncPayload);
         }
       } catch (e) {
         console.warn(`[Socket.IO] Error joining tracking room:`, e.message);
@@ -382,22 +435,61 @@ const emitOrderCreated = (order) => {
   });
 };
 
-const emitOrderStatusUpdated = (order) => {
+const emitOrderStatusUpdated = (order, extra = {}) => {
+  if (!order) return;
   const ordNum = order.orderNumber || order.orderId;
-  const status = order.orderStatus;
+  const ordId = order.orderId || ordNum;
+  const ordMongoId = order._id ? order._id.toString() : '';
+  const status = extra.orderStatus || extra.status || order.orderStatus || order.status;
 
-  emitToOrder(ordNum, 'order:status_updated', {
+  const payload = {
     orderId: ordNum,
+    orderNumber: ordNum,
+    parentOrderId: ordMongoId,
+    _id: ordMongoId,
+    id: ordMongoId,
     status,
-    timestamp: new Date(),
-    order,
+    orderStatus: status,
+    timestamp: new Date().toISOString(),
+    deliveryPartner: order.deliveryPartnerName
+      ? {
+          name: order.deliveryPartnerName,
+          phone: order.deliveryPartnerPhone,
+          vehicle: order.deliveryPartnerVehicle,
+        }
+      : null,
+    trackingTimeline: order.trackingTimeline || [],
+    timeline: order.trackingTimeline || [],
+    ...extra,
+  };
+
+  const targets = Array.from(
+    new Set([ordNum, ordId, ordMongoId, extra.subOrderNumber, extra.orderNumber, extra.orderId])
+  ).filter(Boolean);
+
+  targets.forEach((target) => {
+    emitToOrder(target, 'order:status_updated', payload);
+    emitToOrder(target, 'status_updated', payload);
   });
+
+  if (order.user) {
+    const uId = order.user.toString();
+    emitToCustomer(uId, 'customer:order_status_updated', payload);
+    emitToCustomer(uId, 'order:status_updated', payload);
+  }
+
+  // Global real-time broadcast so any client viewing tracking screen updates immediately
+  if (io) {
+    io.emit('order:status_updated', payload);
+    io.emit('status_updated', payload);
+  }
 
   emitToAdmins('order_status_updated', {
     orderId: ordNum,
     newStatus: status,
     timestamp: new Date(),
     order,
+    ...extra,
   });
 };
 
