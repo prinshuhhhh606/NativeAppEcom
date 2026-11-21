@@ -1,0 +1,69 @@
+name: AppEcom Delivery Android CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "delivery-frontend/**"
+      - ".github/workflows/delivery-ci.yml"
+
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "delivery-frontend/**"
+      - ".github/workflows/delivery-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  delivery-android-ci:
+    name: Install and Build Delivery Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: delivery-frontend/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-37
+            build-tools;37.0.0
+            ndk;27.1.12297006
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Dependencies
+        working-directory: delivery-frontend
+        run: npm ci
+
+      - name: Build Delivery Debug APK
+        working-directory: delivery-frontend/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload Delivery Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppEcom-Delivery-Debug-APK
+          path: delivery-frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
