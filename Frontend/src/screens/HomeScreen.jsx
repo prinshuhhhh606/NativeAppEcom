@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,15 @@ import CategoryCard from '../components/CategoryCard';
 import ProductCard from '../components/ProductCard';
 import AppIcon from '../components/AppIcon';
 import PincodeModal from '../components/PincodeModal';
-import { productService } from '../services/productService';
+import {
+  productService,
+  DEFAULT_HOME_FEED,
+  getCachedHomeDataFromDisk,
+} from '../services/productService';
 import { orderService } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
+import ShimmerHomeScreen from '../components/shimmer/ShimmerHomeScreen';
 
 // Self-contained memoized Flash Deals countdown timer to prevent root re-renders
 const FlashCountdownTimer = React.memo(() => {
@@ -58,64 +63,42 @@ export const HomeScreen = ({ navigation }) => {
   const { openPincodeModal } = useLocation();
   const { isAuthenticated } = useAuth();
 
-  // State
+  // State - Initialized with instant bundled cache for 0ms paint
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(DEFAULT_HOME_FEED.categories);
   const [selectedCategory, setSelectedCategory] = useState('cat_all');
-  const [banners, setBanners] = useState([]);
-  const [trendingProducts, setTrendingProducts] = useState([]);
-  const [bestSellers, setBestSellers] = useState([]);
-  const [newArrivals, setNewArrivals] = useState([]);
-  const [flashDeals, setFlashDeals] = useState([]);
-  const [topRated, setTopRated] = useState([]);
-  const [recommended, setRecommended] = useState([]);
-  const [featuredSellers, setFeaturedSellers] = useState([]);
-  const [popularBrands, setPopularBrands] = useState([]);
-  const [specialOffers, setSpecialOffers] = useState([]);
+  const [banners, setBanners] = useState(DEFAULT_HOME_FEED.banners);
+  const [trendingProducts, setTrendingProducts] = useState(DEFAULT_HOME_FEED.trending);
+  const [bestSellers, setBestSellers] = useState(DEFAULT_HOME_FEED.bestSellers);
+  const [newArrivals, setNewArrivals] = useState(DEFAULT_HOME_FEED.newArrivals);
+  const [flashDeals, setFlashDeals] = useState(DEFAULT_HOME_FEED.flashDeals);
+  const [topRated, setTopRated] = useState(DEFAULT_HOME_FEED.topRated);
+  const [recommended, setRecommended] = useState(DEFAULT_HOME_FEED.recommended);
+  const [featuredSellers, setFeaturedSellers] = useState(DEFAULT_HOME_FEED.featuredSellers);
+  const [popularBrands, setPopularBrands] = useState(DEFAULT_HOME_FEED.popularBrands);
+  const [specialOffers, setSpecialOffers] = useState(DEFAULT_HOME_FEED.specialOffers);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
 
   const loadHomeData = useCallback(async (force = false) => {
     try {
-      const [
-        cats,
-        bans,
-        trending,
-        best,
-        news,
-        flash,
-        top,
-        recom,
-        sellers,
-        brands,
-        offers,
-      ] = await Promise.all([
-        productService.getCategories(force),
-        productService.getBanners(force),
-        productService.getProducts({ isTrending: true }, force),
-        productService.getProducts({ isBestSeller: true }, force),
-        productService.getProducts({ isNewArrival: true }, force),
-        productService.getFlashDeals(force),
-        productService.getTopRatedProducts(force),
-        productService.getRecommendedProducts(force),
-        productService.getFeaturedSellers(),
-        productService.getPopularBrands(),
-        productService.getSpecialOffers(),
-      ]);
+      const feed = await productService.getFastUnifiedHomeFeed(force);
+      if (feed) {
+        if (feed.categories?.length) setCategories(feed.categories);
+        if (feed.banners?.length) setBanners(feed.banners);
+        if (feed.trending?.length) setTrendingProducts(feed.trending);
+        if (feed.bestSellers?.length) setBestSellers(feed.bestSellers);
+        if (feed.newArrivals?.length) setNewArrivals(feed.newArrivals);
+        if (feed.specialOffers?.length) setSpecialOffers(feed.specialOffers);
+        if (feed.featuredSellers?.length) setFeaturedSellers(feed.featuredSellers);
+        if (feed.popularBrands?.length) setPopularBrands(feed.popularBrands);
+        if (feed.flashDeals?.length) setFlashDeals(feed.flashDeals);
+        if (feed.topRated?.length) setTopRated(feed.topRated);
+        if (feed.recommended?.length) setRecommended(feed.recommended);
+      }
 
-      setCategories(cats || []);
-      setBanners(bans || []);
-      setTrendingProducts(trending || []);
-      setBestSellers(best || []);
-      setNewArrivals(news || []);
-      setFlashDeals(flash || []);
-      setTopRated(top || []);
-      setRecommended(recom || []);
-      setFeaturedSellers(sellers || []);
-      setPopularBrands(brands || []);
-      setSpecialOffers(offers || []);
-
-      // Check active live flash sale campaign
+      // Check active live flash sale campaign non-blockingly
       try {
         const liveCampaign = await productService.getActiveFlashSale();
         if (liveCampaign?.products?.length > 0) {
@@ -123,9 +106,10 @@ export const HomeScreen = ({ navigation }) => {
         }
       } catch (e) {}
     } catch (e) {
-      console.warn('Error loading home data', e);
+      console.warn('Silent home data sync note', e);
     } finally {
       setRefreshing(false);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -170,6 +154,23 @@ export const HomeScreen = ({ navigation }) => {
   }, [navigation, isAuthenticated]);
 
   useEffect(() => {
+    // Stage 0: Instant Disk Hydration (Restores previous live API snapshot in 0ms)
+    getCachedHomeDataFromDisk().then((cached) => {
+      if (cached) {
+        if (cached.categories?.length) setCategories(cached.categories);
+        if (cached.banners?.length) setBanners(cached.banners);
+        if (cached.trending?.length) setTrendingProducts(cached.trending);
+        if (cached.bestSellers?.length) setBestSellers(cached.bestSellers);
+        if (cached.newArrivals?.length) setNewArrivals(cached.newArrivals);
+        if (cached.specialOffers?.length) setSpecialOffers(cached.specialOffers);
+        if (cached.featuredSellers?.length) setFeaturedSellers(cached.featuredSellers);
+        if (cached.popularBrands?.length) setPopularBrands(cached.popularBrands);
+        if (cached.flashDeals?.length) setFlashDeals(cached.flashDeals);
+        if (cached.topRated?.length) setTopRated(cached.topRated);
+        if (cached.recommended?.length) setRecommended(cached.recommended);
+      }
+    });
+
     loadHomeData();
     loadRecentlyViewed();
   }, [loadHomeData, loadRecentlyViewed]);
@@ -199,7 +200,8 @@ export const HomeScreen = ({ navigation }) => {
     } catch (e) {
       // ignore
     }
-    navigation.navigate('ProductDetails', { productId: prodId });
+    // Pass full product object for 0ms instant details display
+    navigation.navigate('ProductDetails', { productId: prodId, product });
   }, [navigation]);
 
   const handleOfferPress = useCallback((offer) => {
@@ -237,15 +239,18 @@ export const HomeScreen = ({ navigation }) => {
         placeholder="Search sarees, kurtas, earbuds, spices, handicrafts..."
       />
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }>
+      {initialLoading && banners.length === 0 && trendingProducts.length === 0 ? (
+        <ShimmerHomeScreen />
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }>
         {/* Active Live Delivery Floating Banner */}
         {activeDeliveryOrder && (
           <TouchableOpacity
@@ -355,7 +360,10 @@ export const HomeScreen = ({ navigation }) => {
                     });
                   }
                 }}>
-                <Image source={{ uri: banner.image }} style={styles.bannerImage} />
+                <Image
+                  source={{ uri: banner.image, cache: 'force-cache' }}
+                  style={styles.bannerImage}
+                />
                 <View style={styles.bannerOverlay}>
                   <View style={styles.bannerTag}>
                     <Text style={styles.bannerTagText}>{banner.tag}</Text>
@@ -447,12 +455,12 @@ export const HomeScreen = ({ navigation }) => {
           <FlatList
             horizontal
             data={flashDeals}
-            keyExtractor={(item) => `flash_${item.id}`}
+            keyExtractor={(item) => `flash_${item.id || item._id}`}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalList}
-            initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={3}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderProductItem}
           />
@@ -479,12 +487,12 @@ export const HomeScreen = ({ navigation }) => {
           <FlatList
             horizontal
             data={trendingProducts}
-            keyExtractor={(item) => `trend_${item.id}`}
+            keyExtractor={(item) => `trend_${item.id || item._id}`}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalList}
-            initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={3}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderProductItem}
           />
@@ -516,10 +524,16 @@ export const HomeScreen = ({ navigation }) => {
                     title: seller.name,
                   })
                 }>
-                <Image source={{ uri: seller.banner }} style={styles.sellerBanner} />
+                <Image
+                  source={{ uri: seller.banner, cache: 'force-cache' }}
+                  style={styles.sellerBanner}
+                />
                 <View style={styles.sellerBody}>
                   <View style={styles.sellerLogoRow}>
-                    <Image source={{ uri: seller.logo }} style={styles.sellerLogo} />
+                    <Image
+                      source={{ uri: seller.logo, cache: 'force-cache' }}
+                      style={styles.sellerLogo}
+                    />
                     <View style={styles.verifiedPill}>
                       <AppIcon name="checkmark-circle" size={13} color="#059669" />
                       <Text style={styles.verifiedText}>Verified Store</Text>
@@ -630,12 +644,12 @@ export const HomeScreen = ({ navigation }) => {
           <FlatList
             horizontal
             data={newArrivals}
-            keyExtractor={(item) => `new_${item.id}`}
+            keyExtractor={(item) => `new_${item.id || item._id}`}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalList}
-            initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={3}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderProductItem}
           />
@@ -662,12 +676,12 @@ export const HomeScreen = ({ navigation }) => {
           <FlatList
             horizontal
             data={topRated}
-            keyExtractor={(item) => `top_${item.id}`}
+            keyExtractor={(item) => `top_${item.id || item._id}`}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalList}
-            initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={3}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderProductItem}
           />
@@ -694,12 +708,12 @@ export const HomeScreen = ({ navigation }) => {
           <FlatList
             horizontal
             data={recommended}
-            keyExtractor={(item) => `rec_${item.id}`}
+            keyExtractor={(item) => `rec_${item.id || item._id}`}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalList}
-            initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={3}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderProductItem}
           />
@@ -819,6 +833,7 @@ export const HomeScreen = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+      )}
 
       {/* Interactive Pan India PIN code checker modal */}
       <PincodeModal />

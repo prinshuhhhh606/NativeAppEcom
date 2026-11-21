@@ -100,7 +100,7 @@ export const RegisterScreen = ({ navigation, route }) => {
       });
       Alert.alert(
         'Account Created',
-        'Welcome to Bharat Bazaar! Your Pan India shopping account is ready.',
+        'Welcome to Cartora! Your Pan India shopping account is ready.',
         [
           {
             text: redirectTo ? 'Continue to Checkout' : 'Start Shopping',
@@ -347,7 +347,7 @@ export const RegisterScreen = ({ navigation, route }) => {
                   <AppIcon name="storefront" size={22} color="#6366F1" />
                   <View>
                     <Text style={[styles.partnerTitle, { color: '#4338CA' }]}>
-                      Want to Sell on Bharat Bazaar?
+                      Want to Sell on Cartora?
                     </Text>
                     <Text style={styles.partnerSubtitle}>Register your shop & reach crores of buyers</Text>
                   </View>

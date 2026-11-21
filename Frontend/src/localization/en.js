@@ -1,10 +1,10 @@
 /**
- * Bharat Bazaar - English Localization Dictionary
+ * Cartora - English Localization Dictionary
  */
 export const en = {
   common: {
-    appName: 'Bharat Bazaar',
-    appSubtitle: 'Authentic Indian Marketplace',
+    appName: 'Cartora',
+    appSubtitle: 'Next-Gen E-Commerce Marketplace',
     searchPlaceholder: 'Search for sarees, handicrafts, spices & more...',
     cancel: 'Cancel',
     confirm: 'Confirm',

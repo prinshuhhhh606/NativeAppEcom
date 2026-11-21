@@ -10,7 +10,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
   Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -209,7 +208,7 @@ export const LiveTrackingMap = ({
 </body>
 </html>
     `;
-  }, [pickupLat, pickupLon, destLat, destLon, pickupLocation?.storeName, destinationLocation?.fullName]);
+  }, [pickupLat, pickupLon, destLat, destLon, currentRiderLat, currentRiderLon, safeCustomerName, safeStoreName]);
 
   // Inject smooth marker updates when GPS position changes
   useEffect(() => {

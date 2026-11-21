@@ -1,55 +1,55 @@
 /**
  * Pan India E-Commerce App Color Palette
- * Ultra-Premium, Vibrant, Colorful & High-Contrast Theme
+ * Warm Bright Tortilla California Aesthetic (Warm Ivory Ecru Canvas, Bright High-Contrast Text & Toasted Terracotta)
  */
 export const Colors = {
-  // Brand Saffron / Orange
-  primary: '#E64A19',
-  primaryLight: '#FF8A65',
-  primaryDark: '#BF360C',
-  primarySoft: '#FFF3E0',
+  // Brand Terracotta & Toasted Rust Accent (from reference image)
+  primary: '#BA4C24',
+  primaryLight: '#FCEEE6',
+  primaryDark: '#963815',
+  primarySoft: '#F8E4D6',
 
-  // Royal Navy & Deep Indigo
-  secondary: '#1A237E',
-  secondaryLight: '#3949AB',
+  // Deep Espresso Burgundy (Header & bold text - high-contrast & bright readability)
+  secondary: '#381A16',
+  secondaryLight: '#59322D',
 
-  // Royal Blue & Electric Violet
-  royalBlue: '#2563EB',
-  royalBlueLight: '#60A5FA',
-  royalBlueDark: '#1D4ED8',
-  purple: '#7C3AED',
-  purpleLight: '#A78BFA',
-  purpleDark: '#5B21B6',
+  // Complementary tones
+  royalBlue: '#BA4C24',
+  royalBlueLight: '#FCEEE6',
+  royalBlueDark: '#963815',
+  purple: '#963815',
+  purpleLight: '#FCEEE6',
+  purpleDark: '#7A2B0E',
 
-  // Gold Amber & Sunset Accent
-  accent: '#FF9800',
-  accentLight: '#FFE082',
-  accentDark: '#E65100',
-  accentSoft: '#FFF8E1',
+  // Gold Amber & Warm Glow Accent
+  accent: '#E29532',
+  accentLight: '#FDF1DD',
+  accentDark: '#C27A1C',
+  accentSoft: '#FCF7ED',
 
-  // Surfaces & Backgrounds
-  background: '#FFFFFF',
-  surface: '#F8FAFC',
-  surfaceAlt: '#F1F5F9',
-  surfaceCard: '#FFFFFF',
+  // Surfaces & Backgrounds - EXACT MATCH TO USER'S REFERENCE IMAGE
+  background: '#F8EADB',     // Warm Bright Tortilla Ecru canvas
+  surface: '#FFFFFF',        // Pure White elevated cards
+  surfaceAlt: '#F5E4D3',     // Soft Biscuit Nude
+  surfaceCard: '#FFFFFF',    // White card background
 
   // Text Hierarchy
-  textPrimary: '#0F172A',
-  textSecondary: '#475569',
-  textMuted: '#94A3B8',
-  textLight: '#CBD5E1',
+  textPrimary: '#381A16',    // Rich Espresso Burgundy (bright crisp readability)
+  textSecondary: '#6B514B',  // Warm Taupe Cocoa
+  textMuted: '#99817B',      // Soft Sand Taupe
+  textLight: '#F8EADB',
 
   // Borders & Dividers
-  border: '#E2E8F0',
-  borderLight: '#F1F5F9',
-  borderFocus: '#2563EB',
+  border: '#EAD7C5',         // Delicate warm golden-cream border
+  borderLight: '#F3E5D7',
+  borderFocus: '#BA4C24',
 
   // Status & Semantics
   success: '#10B981',
   successLight: '#D1FAE5',
   successDark: '#047857',
 
-  warning: '#F59E0B',
+  warning: '#E29532',
   warningLight: '#FEF3C7',
   warningDark: '#B45309',
 
@@ -57,33 +57,33 @@ export const Colors = {
   dangerLight: '#FEE2E2',
   dangerDark: '#B91C1C',
 
-  info: '#3B82F6',
-  infoLight: '#DBEAFE',
-  infoDark: '#1D4ED8',
+  info: '#BA4C24',
+  infoLight: '#FCEEE6',
+  infoDark: '#963815',
 
   white: '#FFFFFF',
-  black: '#000000',
+  black: '#381A16',
   transparent: 'transparent',
 
-  shadow: '#0F172A',
-  overlay: 'rgba(15, 23, 42, 0.65)',
+  shadow: '#9C7A65',
+  overlay: 'rgba(56, 26, 22, 0.55)',
 
   // E-commerce Special Badges
-  discountBadge: '#10B981',
-  starRating: '#F59E0B',
+  discountBadge: '#BA4C24',
+  starRating: '#E29532',
   codBadge: '#059669',
-  expressDelivery: '#EF4444',
-  verifiedBadge: '#2563EB',
-  festivalBadge: '#E64A19',
+  expressDelivery: '#BA4C24',
+  verifiedBadge: '#BA4C24',
+  festivalBadge: '#BA4C24',
 
   // Gradients for linear-gradient components
   gradients: {
-    primary: ['#2563EB', '#7C3AED'],
-    saffron: ['#E64A19', '#F97316'],
-    sunset: ['#F59E0B', '#EF4444'],
+    primary: ['#BA4C24', '#963815'],
+    saffron: ['#BA4C24', '#E29532'],
+    sunset: ['#F5E4D3', '#EAD7C5'],
     emerald: ['#10B981', '#059669'],
-    royal: ['#1A237E', '#3949AB'],
-    card: ['#FFFFFF', '#F8FAFC'],
+    royal: ['#381A16', '#59322D'],
+    card: ['#FFFFFF', '#F8EADB'],
   },
 };
 

@@ -5,7 +5,6 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useAuth } from '../context/AuthContext';
 import { navigationRef } from './navigationRef';
 
 import SplashScreen from '../screens/SplashScreen';
@@ -52,7 +51,6 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 const Stack = createNativeStackNavigator();
 
 export const AppNavigator = () => {
-  const { isAdmin, isDelivery, isSeller } = useAuth();
 
   return (
     <NavigationContainer ref={navigationRef}>

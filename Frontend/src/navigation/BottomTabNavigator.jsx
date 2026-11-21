@@ -14,6 +14,8 @@ import BottomTab from '../components/BottomTab';
 
 const Tab = createBottomTabNavigator();
 
+const renderCustomTabBar = (props) => <BottomTab {...props} />;
+
 export const BottomTabNavigator = () => {
   const insets = useSafeAreaInsets();
   const BASE_TAB_HEIGHT = 60;
@@ -21,7 +23,7 @@ export const BottomTabNavigator = () => {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <BottomTab {...props} />}
+      tabBar={renderCustomTabBar}
       detachInactiveScreens={true}
       screenOptions={{
         headerShown: false,

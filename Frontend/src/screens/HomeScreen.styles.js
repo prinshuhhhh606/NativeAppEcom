@@ -6,7 +6,7 @@ const { width } = Dimensions.get('window');
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.background,
   },
   scrollContent: {
     paddingBottom: 24,
@@ -26,11 +26,11 @@ export const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#1E1B4B',
-    elevation: 6,
-    shadowColor: '#2563EB',
+    backgroundColor: Colors.surfaceAlt,
+    elevation: 4,
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.15,
     shadowRadius: 10,
   },
   bannerImage: {
@@ -41,17 +41,17 @@ export const styles = StyleSheet.create({
   },
   bannerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: 'rgba(43, 35, 33, 0.35)',
     padding: 20,
     justifyContent: 'space-between',
   },
   bannerTag: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
     alignSelf: 'flex-start',
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -60,7 +60,7 @@ export const styles = StyleSheet.create({
   bannerTagText: {
     fontSize: 10,
     fontWeight: '900',
-    color: '#0F172A',
+    color: Colors.white,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
@@ -80,13 +80,13 @@ export const styles = StyleSheet.create({
   },
   bannerBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 22,
     marginTop: 10,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -94,7 +94,7 @@ export const styles = StyleSheet.create({
   bannerBtnText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#2563EB',
+    color: Colors.primary,
     letterSpacing: 0.3,
   },
 
@@ -120,32 +120,32 @@ export const styles = StyleSheet.create({
     width: 4,
     height: 18,
     borderRadius: 2,
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.primary,
   },
   sectionTitle: {
     fontSize: 19,
     fontWeight: '900',
-    color: '#0F172A',
+    color: Colors.textPrimary,
     letterSpacing: -0.4,
   },
   sectionSubtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.textSecondary,
     marginTop: 2,
     fontWeight: '500',
   },
   seeAllPill: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: Colors.primarySoft,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderColor: Colors.border,
   },
   seeAllBtn: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#2563EB',
+    color: Colors.primary,
   },
 
   categoriesScroll: {

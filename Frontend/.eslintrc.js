@@ -11,4 +11,8 @@ module.exports = {
       configFile: require.resolve('./babel.config.js'),
     },
   },
+  rules: {
+    'react-native/no-inline-styles': 'off',
+    'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  },
 };

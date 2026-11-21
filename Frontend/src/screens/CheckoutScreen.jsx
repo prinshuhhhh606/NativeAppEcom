@@ -18,7 +18,7 @@ export const CheckoutScreen = ({ navigation }) => {
   const { deliveryDays } = useLocation();
   const [selectedAddress, setSelectedAddress] = useState(null);
   const [shippingMode, setShippingMode] = useState('standard'); // standard, express
-  const [loadingAddress, setLoadingAddress] = useState(true);
+  const [, setLoadingAddress] = useState(true);
 
   const loadAddress = async () => {
     try {

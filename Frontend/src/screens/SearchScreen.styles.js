@@ -4,7 +4,7 @@ import { Colors } from '../constants/colors';
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.background,
   },
   suggestionSection: {
     padding: 16,

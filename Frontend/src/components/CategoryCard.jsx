@@ -23,7 +23,10 @@ export const CategoryCard = React.memo(({
           isSelected && styles.imageWrapperSelected,
         ]}>
         {category.image ? (
-          <Image source={{ uri: category.image }} style={styles.image} />
+          <Image
+            source={{ uri: category.image, cache: 'force-cache' }}
+            style={styles.image}
+          />
         ) : (
           <AppIcon
             name={category.iconName || 'grid-outline'}

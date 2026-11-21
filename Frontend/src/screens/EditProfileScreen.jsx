@@ -12,7 +12,7 @@ export const EditProfileScreen = ({ navigation }) => {
   const { user, updateProfile, isAuthenticated } = useAuth();
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [mobileNumber, setMobileNumber] = useState(user?.mobileNumber || '');
+  const [mobileNumber] = useState(user?.mobileNumber || '');
   const [gender, setGender] = useState(user?.gender || 'Male');
   const [loading, setLoading] = useState(false);
 

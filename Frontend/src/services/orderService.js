@@ -29,109 +29,219 @@ const getOrdersStorageKey = async () => {
 };
 const inFlightTrackingRequests = new Map();
 
+// Synchronous 0-second memory caches
+let _ordersMemoryCache = null;
+const _liveTrackingMemoryCache = new Map();
+
 export const orderService = {
   /**
-   * Get all user orders
-*/
-  
-async getOrders() {
-  let storageKey = null;
+   * Synchronous getter for zero-latency initial UI rendering
+   */
+  getOrdersMemoryCache() {
+    return Array.isArray(_ordersMemoryCache) ? _ordersMemoryCache : [];
+  },
 
-  try {
-    storageKey = await getOrdersStorageKey();
-
-    // Server se orders fetch karo.
-    const response = await api.get('/orders');
-
-    let rawList;
-
-    if (Array.isArray(response)) {
-      rawList = response;
-    } else if (Array.isArray(response?.data)) {
-      rawList = response.data;
-    } else if (Array.isArray(response?.orders)) {
-      rawList = response.orders;
-    } else if (Array.isArray(response?.data?.orders)) {
-      rawList = response.data.orders;
-    } else {
-      throw new Error('Invalid orders API response format');
+  setOrdersMemoryCache(list) {
+    if (Array.isArray(list)) {
+      _ordersMemoryCache = list;
     }
+  },
 
-    const list = rawList
-      .map((item) => this._normalizeOrderData(item))
-      .filter(Boolean);
-
-    console.log('[OrderService] API orders count:', list.length);
-
-    if (storageKey) {
-      // Pehle existing cache read karo.
+  /**
+   * Read disk cache immediately on app/screen mount (0ms cold-start)
+   */
+  async getCachedOrdersFromDisk() {
+    if (_ordersMemoryCache && _ordersMemoryCache.length > 0) {
+      return _ordersMemoryCache;
+    }
+    try {
+      const storageKey = await getOrdersStorageKey();
+      if (!storageKey) return [];
       const stored = await AsyncStorage.getItem(storageKey);
-
-      let cachedOrders = [];
-
-      try {
-        const parsed = stored ? JSON.parse(stored) : [];
-        cachedOrders = Array.isArray(parsed) ? parsed : [];
-      } catch (cacheError) {
-        console.warn(
-          '[OrderService] Invalid cached orders:',
-          cacheError?.message
-        );
-        cachedOrders = [];
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalized = parsed
+            .map((item) => this._normalizeOrderData(item))
+            .filter(Boolean);
+          _ordersMemoryCache = normalized;
+          return normalized;
+        }
       }
-
-      // API empty ho aur cache mein purane orders hon,
-      // to purane orders ko overwrite mat karo.
-      if (list.length === 0 && cachedOrders.length > 0) {
-        console.warn(
-          '[OrderService] API returned empty list. Keeping existing cache.'
-        );
-
-        return cachedOrders
-          .map((item) => this._normalizeOrderData(item))
-          .filter(Boolean);
-      }
-
-      // API se valid orders aaye to cache update karo.
-      await AsyncStorage.setItem(
-        storageKey,
-        JSON.stringify(list)
-      );
+    } catch (err) {
+      console.warn('[OrderService] getCachedOrdersFromDisk failed:', err?.message);
     }
+    return [];
+  },
 
-    return list;
+  /**
+   * Synchronously search cached order for instantaneous milestone rendering
+   */
+  findOrderInCacheSync(orderId) {
+    if (!orderId) return null;
+    const cleanId = String(orderId).trim().replace(/^[#\s]+/, '').toLowerCase();
+    
+    // Check direct tracking cache
+    if (_liveTrackingMemoryCache.has(cleanId)) {
+      return _liveTrackingMemoryCache.get(cleanId);
+    }
+    // Check orders memory cache
+    if (_ordersMemoryCache && Array.isArray(_ordersMemoryCache)) {
+      const match = _ordersMemoryCache.find((item) => {
+        if (!item) return false;
+        const oId = String(item.orderId || '').trim().replace(/^[#\s]+/, '').toLowerCase();
+        const oNum = String(item.orderNumber || '').trim().replace(/^[#\s]+/, '').toLowerCase();
+        const id = String(item._id || '').trim().replace(/^[#\s]+/, '').toLowerCase();
+        return oId === cleanId || oNum === cleanId || id === cleanId;
+      });
+      if (match) {
+        const enriched = this._enrichOrderWithLiveTracking(match);
+        _liveTrackingMemoryCache.set(cleanId, enriched);
+        return enriched;
+      }
+    }
+    return null;
+  },
 
-  } catch (error) {
-    console.warn(
-      '[OrderService] API orders failed:',
-      error?.message
-    );
+  /**
+   * Get cached live tracking data from disk (AsyncStorage)
+   */
+  async getCachedLiveTracking(orderId) {
+    const cleanId = orderId ? String(orderId).trim().replace(/^[#\s]+/, '') : '';
+    if (!cleanId) return null;
 
-    // API fail hone par existing cached orders return karo.
-    if (storageKey) {
-      try {
+    const inMem = this.findOrderInCacheSync(cleanId);
+    if (inMem) return inMem;
+
+    try {
+      const cached = await AsyncStorage.getItem(`@appecom_live_tracking:${cleanId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed) {
+          const enriched = this._enrichOrderWithLiveTracking(parsed);
+          _liveTrackingMemoryCache.set(cleanId.toLowerCase(), enriched);
+          return enriched;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  },
+
+  /**
+   * Get all user orders with Stale-While-Revalidate caching
+   */
+  async getOrders() {
+    let storageKey = null;
+
+    try {
+      storageKey = await getOrdersStorageKey();
+
+      // Server se orders fetch karo.
+      const response = await api.get('/orders');
+
+      let rawList;
+
+      if (Array.isArray(response)) {
+        rawList = response;
+      } else if (Array.isArray(response?.data)) {
+        rawList = response.data;
+      } else if (Array.isArray(response?.orders)) {
+        rawList = response.orders;
+      } else if (Array.isArray(response?.data?.orders)) {
+        rawList = response.data.orders;
+      } else {
+        throw new Error('Invalid orders API response format');
+      }
+
+      const list = rawList
+        .map((item) => this._normalizeOrderData(item))
+        .filter(Boolean);
+
+      console.log('[OrderService] API orders count:', list.length);
+
+      // Instantly update memory cache
+      _ordersMemoryCache = list;
+
+      if (storageKey) {
+        // Pehle existing cache read karo.
         const stored = await AsyncStorage.getItem(storageKey);
 
-        if (stored) {
-          const parsed = JSON.parse(stored);
+        let cachedOrders = [];
 
-          if (Array.isArray(parsed)) {
-            return parsed
-              .map((item) => this._normalizeOrderData(item))
-              .filter(Boolean);
-          }
+        try {
+          const parsed = stored ? JSON.parse(stored) : [];
+          cachedOrders = Array.isArray(parsed) ? parsed : [];
+        } catch (cacheError) {
+          console.warn(
+            '[OrderService] Invalid cached orders:',
+            cacheError?.message
+          );
+          cachedOrders = [];
         }
-      } catch (cacheError) {
-        console.warn(
-          '[OrderService] Cache read failed:',
-          cacheError?.message
+
+        // API empty ho aur cache mein purane orders hon,
+        // to purane orders ko overwrite mat karo.
+        if (list.length === 0 && cachedOrders.length > 0) {
+          console.warn(
+            '[OrderService] API returned empty list. Keeping existing cache.'
+          );
+
+          const fallback = cachedOrders
+            .map((item) => this._normalizeOrderData(item))
+            .filter(Boolean);
+          _ordersMemoryCache = fallback;
+          return fallback;
+        }
+
+        // API se valid orders aaye to cache update karo.
+        await AsyncStorage.setItem(
+          storageKey,
+          JSON.stringify(list)
         );
       }
-    }
 
-    return [];
-  }
-},
+      return list;
+
+    } catch (error) {
+      console.warn(
+        '[OrderService] API orders failed:',
+        error?.message
+      );
+
+      // Return memory cache if available
+      if (_ordersMemoryCache && _ordersMemoryCache.length > 0) {
+        return _ordersMemoryCache;
+      }
+
+      // API fail hone par existing cached orders return karo.
+      if (storageKey) {
+        try {
+          const stored = await AsyncStorage.getItem(storageKey);
+
+          if (stored) {
+            const parsed = JSON.parse(stored);
+
+            if (Array.isArray(parsed)) {
+              const fallback = parsed
+                .map((item) => this._normalizeOrderData(item))
+                .filter(Boolean);
+              _ordersMemoryCache = fallback;
+              return fallback;
+            }
+          }
+        } catch (cacheError) {
+          console.warn(
+            '[OrderService] Cache read failed:',
+            cacheError?.message
+          );
+        }
+      }
+
+      return [];
+    }
+  },
 
   /**
    * Helper to normalize order and tracking into unified customer-facing format
@@ -351,7 +461,6 @@ async getOrders() {
     const orderId = norm.orderId || norm.orderNumber || norm._id || 'BBIN-782194';
     const statusNorm = (norm.orderStatus || norm.status || 'pending').toLowerCase();
     const isDelivered = statusNorm === 'delivered';
-    const isCancelled = ['cancelled', 'rejected'].includes(statusNorm);
     const isRiderActive = ['shipped', 'in_transit', 'out_for_delivery', 'picked_up'].includes(statusNorm);
     // Only show delivery partner after order is packed/assigned (rank >= 3)
     const hasDeliveryPartner = ['packed', 'ready_for_pickup', 'ready_to_ship', 'pickup_scheduled',
@@ -412,152 +521,123 @@ async getOrders() {
   },
 
   /**
-   * Get Live Order Tracking Details (Real-Time GPS & Milestones)
+   * Get live tracking details for an order with 0-second memory & disk cache fallback.
+   */
+  async getLiveTracking(orderId, skipCache = false) {
+    const cleanId = orderId
+      ? String(orderId).trim().replace(/^[#\s]+/, '')
+      : '';
 
-/**
- * Get live tracking details for an order.
- * 1. Fetch from live tracking API.
- * 2. Fallback to exact backend order lookup.
- * 3. Fallback to local order cache.
- */
-async getLiveTracking(orderId) {
-  const cleanId = orderId
-    ? String(orderId).trim().replace(/^[#\s]+/, '')
-    : '';
-
-  if (!cleanId) {
-    console.warn('[OrderService] Tracking order ID is missing.');
-    return null;
-  }
-
-  // Prevent duplicate API requests for the same order
-  const existingRequest = inFlightTrackingRequests.get(cleanId);
-
-  if (existingRequest) {
-    return existingRequest;
-  }
-
-  const request = (async () => {
-    // FIRST: Backend live tracking API
-    try {
-      const endpoint = `/orders/${encodeURIComponent(cleanId)}/track`;
-      const response = await api.get(endpoint);
-
-      // API interceptor may already return response.data
-      const raw = response?.data || response;
-
-      // Normalize possible response structures
-      let orderData =
-        raw?.data?.order ||
-        raw?.data ||
-        raw?.order ||
-        raw;
-
-      if (orderData?.data) {
-        orderData = orderData.data;
-      }
-
-      if (orderData?.order) {
-        orderData = orderData.order;
-      }
-
-      if (
-        orderData &&
-        typeof orderData === 'object' &&
-        !Array.isArray(orderData) &&
-        (
-          orderData.orderId ||
-          orderData.orderNumber ||
-          orderData._id ||
-          orderData.liveTracking
-        )
-      ) {
-        console.log('[OrderService] Live tracking order found:', {
-          orderId: orderData.orderId,
-          orderStatus: orderData.orderStatus,
-          status: orderData.status,
-        });
-
-        return this._enrichOrderWithLiveTracking(orderData);
-      }
-
-      console.warn(
-        '[OrderService] Live tracking response has no valid order:',
-        raw
-      );
-    } catch (error) {
-      console.warn(
-        '[OrderService] Live tracking API failed:',
-        error?.response?.data || error?.message
-      );
+    if (!cleanId) {
+      console.warn('[OrderService] Tracking order ID is missing.');
+      return null;
     }
 
-    // SECOND: Fetch exact order from backend
-    try {
-      const orderData = await this.getOrderById(cleanId);
-
-      if (orderData) {
-        console.log('[OrderService] Order found through backend lookup:', {
-          orderId: orderData.orderId,
-          orderStatus: orderData.orderStatus,
-          status: orderData.status,
-        });
-
-        return this._enrichOrderWithLiveTracking(orderData);
+    // 0-SECOND FAST PATH: Return memory or disk cache immediately if available and not explicitly skipped
+    if (!skipCache) {
+      const cached = this.findOrderInCacheSync(cleanId);
+      if (cached) {
+        // Asynchronously revalidate in background without blocking caller
+        this.getLiveTracking(orderId, true).catch(() => {});
+        return cached;
       }
-    } catch (error) {
-      console.warn(
-        '[OrderService] Order details fallback failed:',
-        error?.response?.data || error?.message
-      );
     }
 
-    // THIRD: Search exact order in local cache
-    try {
-      const orders = await this.getOrders();
+    // Prevent duplicate in-flight API requests for the same order
+    const existingRequest = inFlightTrackingRequests.get(cleanId);
+    if (existingRequest) {
+      return existingRequest;
+    }
 
-      const match = orders.find((item) => {
-        if (!item) return false;
+    const request = (async () => {
+      // FIRST: Backend live tracking API
+      try {
+        const endpoint = `/orders/${encodeURIComponent(cleanId)}/track`;
+        const response = await api.get(endpoint);
 
-        return (
-          String(item.orderId || '').trim() === cleanId ||
-          String(item.orderNumber || '').trim() === cleanId ||
-          String(item._id || '').trim() === cleanId
+        const raw = response?.data || response;
+        let orderData =
+          raw?.data?.order ||
+          raw?.data ||
+          raw?.order ||
+          raw;
+
+        if (orderData?.data) {
+          orderData = orderData.data;
+        }
+
+        if (orderData?.order) {
+          orderData = orderData.order;
+        }
+
+        if (
+          orderData &&
+          typeof orderData === 'object' &&
+          !Array.isArray(orderData) &&
+          (
+            orderData.orderId ||
+            orderData.orderNumber ||
+            orderData._id ||
+            orderData.liveTracking
+          )
+        ) {
+          const enriched = this._enrichOrderWithLiveTracking(orderData);
+          _liveTrackingMemoryCache.set(cleanId.toLowerCase(), enriched);
+          try {
+            AsyncStorage.setItem(`@appecom_live_tracking:${cleanId}`, JSON.stringify(enriched));
+          } catch (e) {}
+          return enriched;
+        }
+      } catch (error) {
+        console.warn(
+          '[OrderService] Live tracking API failed:',
+          error?.response?.data || error?.message
         );
-      });
-
-      if (match) {
-        console.log('[OrderService] Order found in local cache:', {
-          orderId: match.orderId,
-          orderStatus: match.orderStatus,
-          status: match.status,
-        });
-
-        return this._enrichOrderWithLiveTracking(match);
       }
-    } catch (error) {
-      console.warn(
-        '[OrderService] Cached tracking fallback failed:',
-        error?.message
-      );
+
+      // SECOND: Fetch exact order from backend
+      try {
+        const orderData = await this.getOrderById(cleanId);
+
+        if (orderData) {
+          const enriched = this._enrichOrderWithLiveTracking(orderData);
+          _liveTrackingMemoryCache.set(cleanId.toLowerCase(), enriched);
+          try {
+            AsyncStorage.setItem(`@appecom_live_tracking:${cleanId}`, JSON.stringify(enriched));
+          } catch (e) {}
+          return enriched;
+        }
+      } catch (error) {
+        console.warn(
+          '[OrderService] Order details fallback failed:',
+          error?.response?.data || error?.message
+        );
+      }
+
+      // THIRD: Search exact order in local memory or disk cache
+      try {
+        const cached = await this.getCachedLiveTracking(cleanId);
+        if (cached) {
+          return cached;
+        }
+      } catch (error) {
+        console.warn(
+          '[OrderService] Cached tracking fallback failed:',
+          error?.message
+        );
+      }
+
+      return null;
+    })();
+
+    inFlightTrackingRequests.set(cleanId, request);
+
+    try {
+      return await request;
+    } finally {
+      inFlightTrackingRequests.delete(cleanId);
     }
-
-    console.warn(
-      '[OrderService] Shipment not found:',
-      cleanId
-    );
-
-    return null;
-  })();
-
-  inFlightTrackingRequests.set(cleanId, request);
-
-  try {
-    return await request;
-  } finally {
-    inFlightTrackingRequests.delete(cleanId);
-  }
-},
+  },
 
 
   /**

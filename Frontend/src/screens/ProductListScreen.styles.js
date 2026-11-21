@@ -4,7 +4,7 @@ import { Colors } from '../constants/colors';
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.background,
   },
   filterBar: {
     flexDirection: 'row',
@@ -38,13 +38,11 @@ export const styles = StyleSheet.create({
     marginRight: 4,
   },
   grid: {
-    padding: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    padding: 12,
   },
   columnWrapper: {
     justifyContent: 'space-between',
+    paddingHorizontal: 4,
   },
   emptyContainer: {
     padding: 40,

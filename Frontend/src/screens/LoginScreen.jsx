@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles from './LoginScreen.styles';
 import CustomInput from '../components/CustomInput';
@@ -314,7 +314,7 @@ export const LoginScreen = ({ navigation, route }) => {
         </View>
 
         <View style={styles.footerRow}>
-          <Text style={styles.footerText}>New to Bharat Bazaar?</Text>
+          <Text style={styles.footerText}>New to Cartora?</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('Register', { redirectTo, redirectParams })}
             activeOpacity={0.7}>

@@ -120,12 +120,40 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     sanitizeId(passedOrder?._id);
 
   const [targetOrderId, setTargetOrderId] = useState(initialOrderId || null);
-  const [order, setOrder] = useState(
-    passedOrder ? orderService._enrichOrderWithLiveTracking(passedOrder) : null
-  );
-  const [loading, setLoading] = useState(!passedOrder);
+  const [order, setOrder] = useState(() => {
+    if (passedOrder) {
+      return orderService._enrichOrderWithLiveTracking(passedOrder);
+    }
+    if (initialOrderId) {
+      const inMem = orderService.findOrderInCacheSync(initialOrderId);
+      if (inMem) return inMem;
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(() => !order);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastLocationPing, setLastLocationPing] = useState(null);
+
+  // Instant disk cache hydration for 0-second live milestone rendering
+  useEffect(() => {
+    if (!order && (targetOrderId || initialOrderId)) {
+      let isMounted = true;
+      (async () => {
+        try {
+          const cached = await orderService.getCachedLiveTracking(targetOrderId || initialOrderId);
+          if (isMounted && cached) {
+            setOrder(cached);
+            setLoading(false);
+          }
+        } catch (err) {
+          // silent
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [targetOrderId, initialOrderId, order]);
 
   // Auto-restore active order if no orderId was passed (persistent session restoration)
   useEffect(() => {
@@ -142,6 +170,7 @@ export const TrackOrderScreen = ({ route, navigation }) => {
               const restoredId = sanitizeId(active.orderId || active.orderNumber || active._id);
               setTargetOrderId(restoredId);
               setOrder(orderService._enrichOrderWithLiveTracking(active));
+              setLoading(false);
             } else {
               setLoading(false);
             }
@@ -156,14 +185,41 @@ export const TrackOrderScreen = ({ route, navigation }) => {
     }
   }, [targetOrderId, isAuthenticated]);
 
-  // Dynamic live tracking data
-  const [riderLocation, setRiderLocation] = useState(null);
-  const [distanceKm, setDistanceKm] = useState(2.4);
-  const [etaMins, setEtaMins] = useState(8);
-  const [deliveryPartner, setDeliveryPartner] = useState(null);
-  const [sellerInfo, setSellerInfo] = useState(null);
-  const [pickupCoord, setPickupCoord] = useState({ latitude: 26.9124, longitude: 75.7873, storeName: 'Store Hub' });
-  const [destCoord, setDestCoord] = useState({ latitude: 26.9015, longitude: 75.7421, fullName: 'Customer Address' });
+  // Dynamic live tracking data initialized from order immediately (0ms)
+  const [riderLocation, setRiderLocation] = useState(
+    () => order?.liveTracking?.riderLocation || null
+  );
+  const [distanceKm, setDistanceKm] = useState(
+    () => order?.liveTracking?.distanceRemainingKm ?? 2.4
+  );
+  const [etaMins, setEtaMins] = useState(
+    () => order?.liveTracking?.estimatedMinutesRemaining ?? 8
+  );
+  const [deliveryPartner, setDeliveryPartner] = useState(
+    () => order?.deliveryPartner || null
+  );
+  const [sellerInfo, setSellerInfo] = useState(
+    () => order?.seller || null
+  );
+  const [pickupCoord, setPickupCoord] = useState(
+    () => order?.liveTracking?.pickupLocation || { latitude: 26.9124, longitude: 75.7873, storeName: 'Store Hub' }
+  );
+  const [destCoord, setDestCoord] = useState(
+    () => order?.liveTracking?.destinationLocation || { latitude: 26.9015, longitude: 75.7421, fullName: 'Customer Address' }
+  );
+
+  // Synchronize tracking metrics whenever order object updates
+  useEffect(() => {
+    if (order) {
+      if (order.deliveryPartner) setDeliveryPartner(order.deliveryPartner);
+      if (order.seller) setSellerInfo(order.seller);
+      if (order.liveTracking?.riderLocation) setRiderLocation(order.liveTracking.riderLocation);
+      if (order.liveTracking?.distanceRemainingKm !== undefined) setDistanceKm(order.liveTracking.distanceRemainingKm);
+      if (order.liveTracking?.estimatedMinutesRemaining !== undefined) setEtaMins(order.liveTracking.estimatedMinutesRemaining);
+      if (order.liveTracking?.pickupLocation) setPickupCoord(order.liveTracking.pickupLocation);
+      if (order.liveTracking?.destinationLocation) setDestCoord(order.liveTracking.destinationLocation);
+    }
+  }, [order]);
 
   const handleContinueShopping = useCallback(() => {
     navigation.reset({
@@ -306,8 +362,8 @@ export const TrackOrderScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     if (!targetOrderId && !initialOrderId) return;
-    loadOrder();
-  }, [loadOrder, targetOrderId, initialOrderId]);
+    loadOrder(Boolean(order));
+  }, [loadOrder, targetOrderId, initialOrderId, order]);
 
   // Real-Time Socket.IO Live Synchronization + High-Frequency Adaptive Polling Fallback
   useEffect(() => {
@@ -434,7 +490,7 @@ export const TrackOrderScreen = ({ route, navigation }) => {
       socketService.unsubscribeFromOrder(allTrackingAliases);
       if (unsubscribeConn) unsubscribeConn();
     };
-  }, [targetOrderId, getSocketConnectionState, loadOrder, initialOrderId]);
+  }, [targetOrderId, getSocketConnectionState, loadOrder, initialOrderId, order?._id, order?.orderId, order?.orderNumber, passedOrder?._id, passedOrder?.orderId, passedOrder?.orderNumber]);
 
   const handleCallPartner = (phone) => {
     if (phone) {
@@ -540,7 +596,7 @@ export const TrackOrderScreen = ({ route, navigation }) => {
   }
 
   const orderIdDisplay = order.orderId || order.orderNumber || targetOrderId || '';
-  const courierPartnerDisplay = order.courierPartner || 'Bharat Bazaar Fleet Express';
+  const courierPartnerDisplay = order.courierPartner || 'Cartora Fleet Express';
   const trackingNumberDisplay = order.trackingNumber || '';
  
 const normalizeOrderStatus = (status) =>
@@ -827,8 +883,8 @@ console.log('[TRACKING STATUS DEBUG]', {
                     style={[
                       styles.circle,
                       step.completed && styles.circleCompleted,
-step.isCurrent && styles.circleCurrent,
-step.isCurrent && { borderWidth: 3, borderColor: '#1E40AF' },
+                      step.isCurrent && styles.circleCurrent,
+                      step.isCurrent && { borderWidth: 3, borderColor: '#BA4C24' },
                     ]}>
                     {step.completed ? (
                       <AppIcon name="checkmark" size={12} color="#FFF" />
@@ -857,11 +913,15 @@ step.isCurrent && { borderWidth: 3, borderColor: '#1E40AF' },
                     </Text>
                     {step.isCurrent && (
                       <View style={styles.currentBadge}>
-                        <Text style={styles.currentBadgeText}>CURRENT</Text>
+                        <Text style={styles.currentBadgeText}>LIVE IN PROGRESS</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.stepTime}>{step.time}</Text>
+                  <Text style={styles.stepTime}>
+                    {step.isCurrent && (!step.time || step.time === 'In Progress')
+                      ? 'Live tracking in progress'
+                      : step.time}
+                  </Text>
                 </View>
               </View>
             );

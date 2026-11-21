@@ -17,6 +17,8 @@ class SocketService {
     this.candidateIndex = 0;
     this.activeUrl = null;
     this.failoverTimer = null;
+    this.isExplicitlyDisconnected = false;
+    this._connectingPromise = null;
   }
 
   /**
@@ -25,6 +27,10 @@ class SocketService {
   async getSocket() {
     if (this.socket && this.isConnected) {
       return this.socket;
+    }
+
+    if (this._connectingPromise) {
+      return this._connectingPromise;
     }
 
     if (this.isConnecting && this.socket) {
@@ -45,16 +51,46 @@ class SocketService {
    * Connect to backend Socket.IO server with multi-candidate host failover
    */
   async connect(preferredUrl = null) {
+    this.isExplicitlyDisconnected = false;
+
     if (this.socket && (this.isConnected || this.isConnecting)) {
       return this.socket;
     }
 
+    if (this._connectingPromise) {
+      return this._connectingPromise;
+    }
+
+    this._connectingPromise = this._performConnect(preferredUrl);
+    try {
+      const socket = await this._connectingPromise;
+      return socket;
+    } finally {
+      this._connectingPromise = null;
+    }
+  }
+
+  /**
+   * Internal connection implementation with safe resource handling
+   */
+  async _performConnect(preferredUrl = null) {
+    if (this.failoverTimer) {
+      clearTimeout(this.failoverTimer);
+      this.failoverTimer = null;
+    }
+
     if (this.socket) {
-      this.socket.disconnect();
+      try {
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+      } catch (e) {
+        // Safe disposal
+      }
       this.socket = null;
     }
 
     this.isConnecting = true;
+    this.isConnected = false;
 
     // Retrieve active token across Customer, Seller, or Delivery
     let token = null;
@@ -85,7 +121,7 @@ class SocketService {
     const socketUrl = preferredUrl || this.activeUrl || candidateUrls[this.candidateIndex || 0] || Config.SOCKET_URL;
     this.activeUrl = socketUrl;
 
-    this.socket = io(socketUrl, {
+    const socketInstance = io(socketUrl, {
       auth: { token },
       query: { role },
       transports: ['polling', 'websocket'],
@@ -97,42 +133,55 @@ class SocketService {
       timeout: 8000,
     });
 
-    this.socket.on('connect', () => {
+    this.socket = socketInstance;
+
+    socketInstance.on('connect', () => {
+      // Guard against stale socket instances or explicit teardown
+      if (this.socket !== socketInstance || this.isExplicitlyDisconnected) {
+        try {
+          socketInstance.removeAllListeners();
+          socketInstance.disconnect();
+        } catch (e) {}
+        return;
+      }
+
       this.isConnected = true;
       this.isConnecting = false;
       if (this.failoverTimer) {
         clearTimeout(this.failoverTimer);
         this.failoverTimer = null;
       }
-      console.log(`[SocketService] Connected to ${socketUrl} (ID: ${this.socket.id})`);
+      console.log(`[SocketService] Connected to ${socketUrl} (ID: ${socketInstance.id})`);
 
       // Notify connection state listeners
       this._notifyConnectionListeners(true);
 
       // Re-subscribe all active order tracking rooms upon reconnect
       this.activeSubscriptions.forEach((_, orderId) => {
-        this.socket.emit('join_order_tracking', { orderId });
+        socketInstance.emit('join_order_tracking', { orderId });
       });
     });
 
-    this.socket.on('disconnect', (reason) => {
+    socketInstance.on('disconnect', (reason) => {
+      if (this.socket !== socketInstance) return;
       this.isConnected = false;
       this.isConnecting = false;
       console.log(`[SocketService] Disconnected: ${reason}`);
       this._notifyConnectionListeners(false);
     });
 
-    this.socket.on('connect_error', (error) => {
+    socketInstance.on('connect_error', (error) => {
+      if (this.socket !== socketInstance || this.isExplicitlyDisconnected) return;
       this.isConnected = false;
       this.isConnecting = false;
       // Log connection status info without triggering LogBox yellow-box spam
       console.log(`[SocketService] Host ${socketUrl} connection attempt: ${error.message}`);
 
       // Try next candidate URL if this one timed out or failed to connect
-      if (!this.failoverTimer && candidateUrls.length > 1) {
+      if (!this.failoverTimer && !this.isExplicitlyDisconnected && candidateUrls.length > 1) {
         this.failoverTimer = setTimeout(() => {
           this.failoverTimer = null;
-          if (!this.isConnected) {
+          if (!this.isConnected && !this.isExplicitlyDisconnected) {
             this.candidateIndex = ((this.candidateIndex || 0) + 1) % candidateUrls.length;
             const nextUrl = candidateUrls[this.candidateIndex];
             console.log(`[SocketService] Auto-failing over to candidate host: ${nextUrl}`);
@@ -144,6 +193,8 @@ class SocketService {
 
     // Universal callback dispatcher matching orderId, orderNumber, deliveryId
     const triggerOrderCallbacks = (data, cbName) => {
+      if (this.socket !== socketInstance || this.isExplicitlyDisconnected) return;
+
       const candidates = [
         data?.orderId,
         data?.orderNumber,
@@ -184,59 +235,59 @@ class SocketService {
     };
 
     // Listen for incoming live order tracking broadcasts
-    this.socket.on('delivery:location_updated', (data) => {
+    socketInstance.on('delivery:location_updated', (data) => {
       triggerOrderCallbacks(data, 'onLocation');
     });
 
-    this.socket.on('delivery:eta_updated', (data) => {
+    socketInstance.on('delivery:eta_updated', (data) => {
       triggerOrderCallbacks(data, 'onEta');
     });
 
-    this.socket.on('order:status_updated', (data) => {
+    socketInstance.on('order:status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('status_updated', (data) => {
+    socketInstance.on('status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('customer:order_status_updated', (data) => {
+    socketInstance.on('customer:order_status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('seller:order_status_updated', (data) => {
+    socketInstance.on('seller:order_status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('order_status_updated', (data) => {
+    socketInstance.on('order_status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('delivery:status_updated', (data) => {
+    socketInstance.on('delivery:status_updated', (data) => {
       triggerOrderCallbacks(data, 'onStatus');
     });
 
-    this.socket.on('delivery:partner_assigned', (data) => {
+    socketInstance.on('delivery:partner_assigned', (data) => {
       triggerOrderCallbacks(data, 'onPartner');
     });
 
-    this.socket.on('delivery:assignment_accepted', (data) => {
+    socketInstance.on('delivery:assignment_accepted', (data) => {
       triggerOrderCallbacks(data, 'onPartner');
     });
 
-    this.socket.on('delivery:order_picked_up', (data) => {
+    socketInstance.on('delivery:order_picked_up', (data) => {
       triggerOrderCallbacks({ ...data, status: 'picked_up' }, 'onStatus');
     });
 
-    this.socket.on('delivery:out_for_delivery', (data) => {
+    socketInstance.on('delivery:out_for_delivery', (data) => {
       triggerOrderCallbacks({ ...data, status: 'out_for_delivery' }, 'onStatus');
     });
 
-    this.socket.on('delivery:delivered', (data) => {
+    socketInstance.on('delivery:delivered', (data) => {
       triggerOrderCallbacks({ ...data, status: 'delivered' }, 'onStatus');
     });
 
-    return this.socket;
+    return socketInstance;
   }
 
   /**
@@ -308,7 +359,7 @@ class SocketService {
 
     targets.forEach((target) => {
       this.activeSubscriptions.delete(target);
-      if (this.socket && this.isConnected) {
+      if (this.socket && (this.isConnected || this.socket.connected)) {
         this.socket.emit('leave_order_tracking', { orderId: target });
       }
     });
@@ -321,7 +372,7 @@ class SocketService {
     if (!latitude || !longitude) return;
 
     const socket = await this.getSocket();
-    if (socket && this.isConnected) {
+    if (socket && (this.isConnected || socket.connected)) {
       socket.emit('delivery:location_update', {
         orderId,
         deliveryId,
@@ -339,7 +390,7 @@ class SocketService {
    */
   async emitDeliveryAction(event, payload = {}) {
     const socket = await this.getSocket();
-    if (socket && this.isConnected) {
+    if (socket && (this.isConnected || socket.connected)) {
       socket.emit(`delivery:${event}`, payload);
     }
   }
@@ -349,7 +400,7 @@ class SocketService {
    */
   async emitSellerAction(event, payload = {}) {
     const socket = await this.getSocket();
-    if (socket && this.isConnected) {
+    if (socket && (this.isConnected || socket.connected)) {
       socket.emit(`order:${event}`, payload);
     }
   }
@@ -378,16 +429,33 @@ class SocketService {
   }
 
   /**
-   * Disconnect socket cleanly on logout
+   * Disconnect socket cleanly on logout or cleanup
    */
   disconnect() {
+    this.isExplicitlyDisconnected = true;
+    if (this.failoverTimer) {
+      clearTimeout(this.failoverTimer);
+      this.failoverTimer = null;
+    }
     this.activeSubscriptions.clear();
     if (this.socket) {
-      this.socket.disconnect();
+      try {
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+      } catch (e) {}
       this.socket = null;
     }
     this.isConnected = false;
     this.isConnecting = false;
+    this._connectingPromise = null;
+    this._notifyConnectionListeners(false);
+  }
+
+  /**
+   * Safe cleanup alias
+   */
+  cleanup() {
+    this.disconnect();
   }
 }
 

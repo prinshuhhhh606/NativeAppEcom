@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles from './AdminLoginScreen.styles';
 import CustomInput from '../components/CustomInput';
@@ -52,7 +52,7 @@ export const AdminLoginScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      const res = await adminLogin(email.trim(), password, rememberMe);
+      await adminLogin(email.trim(), password, rememberMe);
       // Navigate to Admin Dashboard
       navigation.replace('AdminDashboard');
     } catch (err) {
@@ -85,7 +85,7 @@ export const AdminLoginScreen = ({ navigation }) => {
           <View style={styles.logoBadge}>
             <Text style={styles.badgeText}>BB</Text>
           </View>
-          <Text style={styles.title}>Bharat Bazaar Admin</Text>
+          <Text style={styles.title}>Cartora Admin</Text>
           <Text style={styles.subtitle}>
             Pan India E-Commerce Operations & Control Dashboard
           </Text>

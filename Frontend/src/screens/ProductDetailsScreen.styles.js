@@ -6,7 +6,7 @@ const { width } = Dimensions.get('window');
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.background,
   },
   scrollContent: {
     paddingBottom: 110,
@@ -16,7 +16,7 @@ export const styles = StyleSheet.create({
   galleryContainer: {
     width,
     height: width * 0.95,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: Colors.surfaceAlt,
     position: 'relative',
   },
   galleryImage: {

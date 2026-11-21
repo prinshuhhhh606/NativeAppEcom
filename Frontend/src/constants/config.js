@@ -1,7 +1,7 @@
 
 /**
  * App Configuration & Constants
- * Bharat Bazaar - Customer / Seller / Delivery
+ * Cartora - Customer / Seller / Delivery
  */
 
 import { Platform } from 'react-native';
@@ -115,8 +115,8 @@ const getSocketUrl = () => {
 };
 
 export const Config = {
-  APP_NAME: 'AppsicaEcom',
-  APP_SUBTITLE: 'Premium Multi-Vendor E-Commerce',
+  APP_NAME: 'Cartora',
+  APP_SUBTITLE: 'Next-Gen Multi-Vendor Marketplace',
   VERSION: '1.0.0',
 
   // API Configuration
@@ -190,7 +190,7 @@ export const Config = {
 
   // Contact & Support
   SUPPORT_PHONE: '+91 1800 200 4567',
-  SUPPORT_EMAIL: 'support@bharatbazaar.in',
+  SUPPORT_EMAIL: 'support@cartora.in',
 
   RETURN_POLICY_DAYS: 7,
 };

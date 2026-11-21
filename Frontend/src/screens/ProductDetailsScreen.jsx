@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,12 +32,19 @@ export const ProductDetailsScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuth();
   const productId = route.params?.productId || route.params?.id || route.params?._id;
-  const [product, setProduct] = useState(null);
+  const passedProduct = route.params?.product || null;
+
+  const [product, setProduct] = useState(passedProduct);
   const [related, setRelated] = useState([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [selectedVariant, setSelectedVariant] = useState({});
+  const [selectedVariant, setSelectedVariant] = useState(() => {
+    const initialVar = {};
+    if (passedProduct?.variants?.colors?.length) initialVar.color = passedProduct.variants.colors[0];
+    if (passedProduct?.variants?.sizes?.length) initialVar.size = passedProduct.variants.sizes[0];
+    return initialVar;
+  });
   const [quantity, setQuantity] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!passedProduct);
   const [zoomModalVisible, setZoomModalVisible] = useState(false);
   const [liveReviews, setLiveReviews] = useState([]);
   const [liveQuestions, setLiveQuestions] = useState([]);
@@ -47,21 +54,19 @@ export const ProductDetailsScreen = ({ route, navigation }) => {
   const { selectedPincode, cityName, openPincodeModal, isServiceable, codAvailable, deliveryDays } =
     useLocation();
 
-  useEffect(() => {
-    loadProductDetails();
-  }, [productId]);
-
-  const loadProductDetails = async () => {
-    setLoading(true);
+  const loadProductDetails = useCallback(async () => {
+    if (!passedProduct) setLoading(true);
     try {
       const data = await productService.getProductById(productId);
-      setProduct(data);
+      setProduct((prev) => ({ ...(prev || {}), ...data }));
 
       // Default selected variants
-      const initialVar = {};
-      if (data.variants?.colors?.length) initialVar.color = data.variants.colors[0];
-      if (data.variants?.sizes?.length) initialVar.size = data.variants.sizes[0];
-      setSelectedVariant(initialVar);
+      setSelectedVariant((prev) => {
+        const next = { ...prev };
+        if (!next.color && data.variants?.colors?.length) next.color = data.variants.colors[0];
+        if (!next.size && data.variants?.sizes?.length) next.size = data.variants.sizes[0];
+        return next;
+      });
 
       // Unblock UI immediately: product is ready for user interaction
       setLoading(false);
@@ -105,7 +110,11 @@ export const ProductDetailsScreen = ({ route, navigation }) => {
       navigation.goBack();
       setLoading(false);
     }
-  };
+  }, [productId, passedProduct, navigation]);
+
+  useEffect(() => {
+    loadProductDetails();
+  }, [loadProductDetails]);
 
   const handleWriteReview = async () => {
     if (!isAuthenticated) {

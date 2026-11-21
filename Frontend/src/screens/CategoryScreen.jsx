@@ -5,11 +5,12 @@ import styles from './CategoryScreen.styles';
 import Header from '../components/Header';
 import AppIcon from '../components/AppIcon';
 import { productService } from '../services/productService';
+import { CATEGORIES } from '../models/categoryModel';
 
 export const CategoryScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const TAB_BAR_HEIGHT = 60;
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(CATEGORIES);
 
   useEffect(() => {
     productService.getCategories().then(setCategories);
@@ -38,7 +39,10 @@ export const CategoryScreen = ({ navigation }) => {
             style={styles.card}
             activeOpacity={0.8}
             onPress={() => handleCategoryPress(item)}>
-            <Image source={{ uri: item.image }} style={styles.image} />
+            <Image
+              source={{ uri: item.image, cache: 'force-cache' }}
+              style={styles.image}
+            />
             <View style={styles.info}>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.count}>{item.itemCount}+ Products</Text>

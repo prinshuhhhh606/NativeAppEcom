@@ -90,38 +90,46 @@ export const SellerOrdersScreen = ({ navigation }) => {
   const getNormStatus = (o) => (o.status || o.orderStatus || 'pending').toLowerCase();
 
   const statusTabs = [
-    { id: 'all', label: `All (${orders.length})` },
+    { id: 'all', label: 'All', count: orders.length },
     {
       id: 'new',
-      label: `New (${orders.filter((o) => ['pending', 'new', 'placed'].includes(getNormStatus(o))).length})`,
+      label: 'New',
+      count: orders.filter((o) => ['pending', 'new', 'placed'].includes(getNormStatus(o))).length,
     },
     {
       id: 'accepted',
-      label: `Accepted (${orders.filter((o) => ['accepted', 'confirmed'].includes(getNormStatus(o))).length})`,
+      label: 'Accepted',
+      count: orders.filter((o) => ['accepted', 'confirmed'].includes(getNormStatus(o))).length,
     },
     {
       id: 'processing',
-      label: `Processing (${orders.filter((o) => ['processing', 'preparing', 'processing_completed', 'packing', 'packed'].includes(getNormStatus(o))).length})`,
+      label: 'Processing',
+      count: orders.filter((o) => ['processing', 'preparing', 'processing_completed', 'packing', 'packed'].includes(getNormStatus(o))).length,
     },
     {
-      id: 'ready_for_pickup',
-      label: `Ready (${orders.filter((o) => ['ready_for_pickup', 'ready_to_ship', 'pickup_scheduled'].includes(getNormStatus(o))).length})`,
+      id: 'ready',
+      label: 'Ready',
+      count: orders.filter((o) => ['ready', 'ready_for_pickup', 'ready_to_ship', 'pickup_scheduled'].includes(getNormStatus(o))).length,
     },
     {
       id: 'shipped',
-      label: `Shipped (${orders.filter((o) => ['shipped', 'picked_up', 'in_transit', 'out_for_delivery'].includes(getNormStatus(o))).length})`,
+      label: 'Shipped',
+      count: orders.filter((o) => ['shipped', 'picked_up', 'in_transit', 'out_for_delivery'].includes(getNormStatus(o))).length,
     },
     {
       id: 'delivered',
-      label: `Delivered (${orders.filter((o) => getNormStatus(o) === 'delivered').length})`,
+      label: 'Delivered',
+      count: orders.filter((o) => getNormStatus(o) === 'delivered').length,
     },
     {
       id: 'cancelled',
-      label: `Cancelled (${orders.filter((o) => getNormStatus(o) === 'cancelled').length})`,
+      label: 'Canceled',
+      count: orders.filter((o) => ['cancelled', 'canceled'].includes(getNormStatus(o))).length,
     },
     {
       id: 'rejected',
-      label: `Rejected (${orders.filter((o) => getNormStatus(o) === 'rejected').length})`,
+      label: 'Rejected',
+      count: orders.filter((o) => getNormStatus(o) === 'rejected').length,
     },
   ];
 
@@ -138,10 +146,10 @@ export const SellerOrdersScreen = ({ navigation }) => {
     if (activeTab === 'new') return ['pending', 'new', 'placed'].includes(s);
     if (activeTab === 'accepted') return ['accepted', 'confirmed'].includes(s);
     if (activeTab === 'processing') return ['processing', 'preparing', 'processing_completed', 'packing', 'packed'].includes(s);
-    if (activeTab === 'ready_for_pickup') return ['ready_for_pickup', 'ready_to_ship', 'pickup_scheduled'].includes(s);
+    if (activeTab === 'ready' || activeTab === 'ready_for_pickup') return ['ready', 'ready_for_pickup', 'ready_to_ship', 'pickup_scheduled'].includes(s);
     if (activeTab === 'shipped') return ['shipped', 'picked_up', 'in_transit', 'out_for_delivery'].includes(s);
     if (activeTab === 'delivered') return s === 'delivered';
-    if (activeTab === 'cancelled') return s === 'cancelled';
+    if (activeTab === 'cancelled' || activeTab === 'canceled') return s === 'cancelled' || s === 'canceled';
     if (activeTab === 'rejected') return s === 'rejected';
 
     return s === activeTab;
@@ -385,22 +393,37 @@ export const SellerOrdersScreen = ({ navigation }) => {
       </View>
 
       {/* Status Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
-        {statusTabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.tab, activeTab === tab.id && styles.activeTab]}
-            onPress={() => {
-              setActiveTab(tab.id);
-              setSelectedOrders([]);
-            }}
-            activeOpacity={0.7}>
-            <Text style={[styles.tabText, activeTab === tab.id && styles.activeTabText]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsScrollContent}
+        >
+          {statusTabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.tab, isActive && styles.activeTab]}
+                onPress={() => {
+                  setActiveTab(tab.id);
+                  setSelectedOrders([]);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                  {tab.label}
+                </Text>
+                <View style={[styles.tabBadge, isActive && styles.activeTabBadge]}>
+                  <Text style={[styles.tabBadgeText, isActive && styles.activeTabBadgeText]}>
+                    {tab.count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* Main Order List */}
       {loading ? (
@@ -409,6 +432,7 @@ export const SellerOrdersScreen = ({ navigation }) => {
         </View>
       ) : (
         <FlatList
+          style={styles.flatList}
           data={filteredOrders}
           keyExtractor={(item) => item._id || item.orderId || String(Math.random())}
           contentContainerStyle={[

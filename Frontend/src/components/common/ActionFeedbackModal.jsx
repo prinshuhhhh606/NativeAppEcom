@@ -20,7 +20,6 @@ import { useActionFeedback } from '../../context/ActionFeedbackContext';
 import { navigateToCart } from '../../navigation/navigationRef';
 import { formatPrice, getThumbnailUrl } from '../../utils/helpers';
 import AppIcon from '../AppIcon';
-import { Colors } from '../../constants/colors';
 
 const { width } = Dimensions.get('window');
 
@@ -79,7 +78,7 @@ export const ActionFeedbackModal = () => {
         }).start();
       }
     }
-  }, [visible, type]);
+  }, [visible, type, iconScaleAnim, opacityAnim, scaleAnim]);
 
   if (!visible) return null;
 

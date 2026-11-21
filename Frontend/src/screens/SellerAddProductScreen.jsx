@@ -43,7 +43,7 @@ export const SellerAddProductScreen = ({ navigation, route }) => {
     editingProduct?.category?._id || editingProduct?.category || ''
   );
   const [subCategory, setSubCategory] = useState(editingProduct?.subCategory || '');
-  const [brand, setBrand] = useState(editingProduct?.brand || user?.storeName || 'Bharat Bazaar');
+  const [brand, setBrand] = useState(editingProduct?.brand || user?.storeName || 'Cartora');
   const [sku, setSku] = useState(
     editingProduct?.sku || `SKU-${Date.now().toString().slice(-6)}`
   );
@@ -70,7 +70,7 @@ export const SellerAddProductScreen = ({ navigation, route }) => {
   const [lowStockAlert, setLowStockAlert] = useState(
     editingProduct?.lowStockAlert !== undefined ? String(editingProduct.lowStockAlert) : '5'
   );
-  const [weight, setWeight] = useState(
+  const [weight] = useState(
     editingProduct?.weight ? String(editingProduct.weight) : '0.5'
   );
 
@@ -354,7 +354,7 @@ export const SellerAddProductScreen = ({ navigation, route }) => {
         if (!hasCamera) {
           const status = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
             title: 'Camera Access',
-            message: 'Bharat Bazaar needs access to your camera to take product photos.',
+            message: 'Cartora needs access to your camera to take product photos.',
             buttonPositive: 'Allow',
             buttonNegative: 'Cancel',
           });

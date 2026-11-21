@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,27 +33,23 @@ export const SellerProfileScreen = ({ navigation }) => {
   const [vacationMode, setVacationMode] = useState(false);
 
   // Bank Info (Audited / Verified)
-  const [bankName, setBankName] = useState('State Bank of India');
-  const [accountNumber, setAccountNumber] = useState('•••• •••• 8291');
-  const [ifsc, setIfsc] = useState('SBIN0004031');
-  const [gstin, setGstin] = useState('08AABCB1234F1Z6');
+  const [bankName] = useState('State Bank of India');
+  const [accountNumber] = useState('•••• •••• 8291');
+  const [ifsc] = useState('SBIN0004031');
+  const [gstin] = useState('08AABCB1234F1Z6');
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     setLoading(true);
     try {
       const res = await sellerService.getProfile();
       if (res && res.store) {
-        setStoreName(res.store.name || storeName);
-        setOwnerName(res.store.ownerName || ownerName);
-        setEmail(res.store.email || email);
-        setPhone(res.store.phone || phone);
-        setAddress(res.store.address || address);
-        setCity(res.store.city || city);
-        setPincode(res.store.pincode || pincode);
+        if (res.store.name) setStoreName(res.store.name);
+        if (res.store.ownerName) setOwnerName(res.store.ownerName);
+        if (res.store.email) setEmail(res.store.email);
+        if (res.store.phone) setPhone(res.store.phone);
+        if (res.store.address) setAddress(res.store.address);
+        if (res.store.city) setCity(res.store.city);
+        if (res.store.pincode) setPincode(res.store.pincode);
         if (res.store.vacationMode !== undefined) {
           setVacationMode(res.store.vacationMode);
         }
@@ -63,7 +59,11 @@ export const SellerProfileScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const handleSaveProfile = async () => {
     if (!storeName.trim()) {
@@ -115,7 +115,7 @@ export const SellerProfileScreen = ({ navigation }) => {
           {/* Store Banner & Avatar Card */}
           <View style={styles.storeHeaderCard}>
             <View style={styles.bannerPlaceholder}>
-              <Text style={styles.bannerText}>🇮🇳 Verified Bharat Bazaar Merchant</Text>
+              <Text style={styles.bannerText}>🇮🇳 Verified Cartora Merchant</Text>
             </View>
             <View style={styles.avatarRow}>
               <View style={styles.avatarCircle}>

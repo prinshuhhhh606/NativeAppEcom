@@ -14,7 +14,7 @@ describe('ActionFeedback System', () => {
     isAdded: true,
   };
 
-  const showCartSuccess = ({ product, isUpdate = false, quantity = 1 }) => {
+  const showCartSuccess = ({ product, isUpdate = false, _quantity = 1 }) => {
     feedbackState = {
       visible: true,
       type: 'cart',

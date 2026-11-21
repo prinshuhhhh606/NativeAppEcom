@@ -22,7 +22,7 @@ export const SellerInventoryScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all' | 'low' | 'out'
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
 
   // Barcode / SKU Quick Scan state
   const [barcodeQuery, setBarcodeQuery] = useState('');

@@ -5,6 +5,122 @@
 import api from './api';
 import { PRODUCTS, PROMOTIONAL_BANNERS } from '../models/productModel';
 import { CATEGORIES } from '../models/categoryModel';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'react-native';
+
+export const FEATURED_SELLERS = [
+  {
+    id: 'seller_1',
+    name: 'Jaipur Heritage Handlooms',
+    slug: 'jaipur-handlooms',
+    city: 'Jaipur, Rajasthan',
+    rating: 4.9,
+    reviewCount: 1420,
+    badge: 'Top Rated Vendor',
+    logo: 'https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?auto=format&fit=crop&w=200&q=80',
+    banner: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=600&q=80',
+    specialty: 'Pure Bandhani Silk, Bagru Block Prints & Jaipuri AC Quilts',
+  },
+  {
+    id: 'seller_2',
+    name: 'Banaras Silk Weavers Guild',
+    slug: 'banaras-silks',
+    city: 'Varanasi, Uttar Pradesh',
+    rating: 4.8,
+    reviewCount: 980,
+    badge: 'GI Tag Verified',
+    logo: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+    banner: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=600&q=80',
+    specialty: 'Authentic Katan Silk, Zari Brocades & Hand-dyed Dupattas',
+  },
+  {
+    id: 'seller_3',
+    name: 'Kutch Kutumb Handicrafts',
+    slug: 'kutch-crafts',
+    city: 'Bhuj, Gujarat',
+    rating: 4.7,
+    reviewCount: 650,
+    badge: 'Artisan Cooperative',
+    logo: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=200&q=80',
+    banner: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=600&q=80',
+    specialty: 'Mirror Embroidered Shawls, Terracotta Pottery & Bell Crafts',
+  },
+];
+
+export const POPULAR_BRANDS = [
+  { id: 'b1', name: 'FabIndia', category: 'Ethnic Wear', discount: 'Up to 40% OFF', logo: '🏮' },
+  { id: 'b2', name: 'Manyavar', category: 'Wedding Couture', discount: 'Min 30% OFF', logo: '👑' },
+  { id: 'b3', name: 'Biba', category: 'Women Kurtas', discount: 'Flat 50% OFF', logo: '👗' },
+  { id: 'b4', name: 'Titan', category: 'Watches', discount: 'Up to 35% OFF', logo: '⌚' },
+  { id: 'b5', name: 'Khadi Gram', category: 'Organic Textiles', discount: 'Special ₹499 Store', logo: '🌿' },
+  { id: 'b6', name: 'Boat', category: 'Audio & Gadgets', discount: 'Up to 60% OFF', logo: '🎧' },
+];
+
+export const SPECIAL_OFFERS = [
+  {
+    id: 'off_1',
+    title: 'HDFC & SBI Bank Offer',
+    description: 'Instant 10% Discount on Credit & Debit Cards up to ₹1,500',
+    code: 'BANK10',
+    color: '#1565C0',
+  },
+  {
+    id: 'off_2',
+    title: 'Flat ₹200 Cashback via UPI',
+    description: 'Valid on Google Pay, PhonePe, Paytm on orders above ₹999',
+    code: 'UPI200',
+    color: '#2E7D32',
+  },
+  {
+    id: 'off_3',
+    title: 'Free Express Shipping Across India',
+    description: 'Automatic waiver on orders above ₹499 to 19,000+ PIN codes',
+    code: 'FREESHIP',
+    color: '#E64A19',
+  },
+];
+
+const HOME_CACHE_STORAGE_KEY = '@appsica_home_feed_v3';
+
+export async function getCachedHomeDataFromDisk() {
+  try {
+    const raw = await AsyncStorage.getItem(HOME_CACHE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
+export async function saveCachedHomeDataToDisk(data) {
+  try {
+    if (data && typeof data === 'object') {
+      await AsyncStorage.setItem(HOME_CACHE_STORAGE_KEY, JSON.stringify(data));
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function prefetchHomeImages(banners = [], categories = []) {
+  try {
+    if (Array.isArray(banners)) {
+      banners.forEach((b) => {
+        if (b?.image) Image.prefetch(b.image).catch(() => {});
+      });
+    }
+    if (Array.isArray(categories)) {
+      categories.forEach((c) => {
+        if (c?.image) Image.prefetch(c.image).catch(() => {});
+      });
+    }
+  } catch (e) {}
+}
 
 // In-memory cache & in-flight request deduplication
 const memoryCache = new Map();
@@ -132,6 +248,27 @@ export function normalizeProduct(raw) {
   };
 }
 
+// Instant synchronous fallback data for 0-second home screen render
+const _initialProducts = PRODUCTS.map(normalizeProduct);
+export const DEFAULT_HOME_FEED = {
+  categories: CATEGORIES,
+  banners: PROMOTIONAL_BANNERS,
+  trending: _initialProducts.filter((p) => p.isTrending),
+  bestSellers: _initialProducts.filter((p) => p.isBestSeller),
+  newArrivals: _initialProducts.filter((p) => p.isNewArrival),
+  specialOffers: SPECIAL_OFFERS,
+  featuredSellers: FEATURED_SELLERS,
+  popularBrands: POPULAR_BRANDS,
+  flashDeals: _initialProducts.slice(0, 4).map((p, idx) => ({
+    ...p,
+    flashDiscount: 50 + idx * 5,
+    flashPrice: Math.round(p.price * 0.7),
+    claimedPercent: 65 + idx * 8,
+  })),
+  topRated: _initialProducts.filter((p) => p.rating >= 4.6).slice(0, 6),
+  recommended: _initialProducts.slice(1, 7),
+};
+
 export const productService = {
   /**
    * Clear in-memory product cache
@@ -164,51 +301,188 @@ export const productService = {
   },
 
   /**
-   * Get products with optional filter params (categoryId, search, sort, isTrending, etc.)
+   * Get products with optional filter params (categoryId, search, sort, isTrending, page, limit, etc.)
    */
   async getProducts(params = {}, forceRefresh = false) {
     const key = `products_${JSON.stringify(params)}`;
-    return cachedFetch(key, async () => {
-      try {
-        const response = await api.get('/products', { params });
-        const rawList = response.data?.products || response.data || response;
-        if (Array.isArray(rawList) && rawList.length > 0) {
-          return rawList.map(normalizeProduct);
-        }
-        return PRODUCTS.map(normalizeProduct);
-      } catch (e) {
-        let filtered = PRODUCTS.map(normalizeProduct);
+    return cachedFetch(
+      key,
+      async () => {
+        try {
+          const response = await api.get('/products', { params });
+          const rawList = Array.isArray(response.data)
+            ? response.data
+            : response.data?.products || response.products || response;
+          const meta = response.meta || response.pagination || {};
 
-        if (params.categoryId && params.categoryId !== 'cat_all') {
-          filtered = filtered.filter((p) => p.categoryId === params.categoryId);
-        }
+          let normalized = [];
+          if (Array.isArray(rawList) && rawList.length > 0) {
+            normalized = rawList.map(normalizeProduct);
+          } else if (!params.search && !params.query && !params.categoryId && !params.page) {
+            normalized = PRODUCTS.map(normalizeProduct);
+          }
 
-        if (params.query) {
-          const q = params.query.toLowerCase().trim();
-          filtered = filtered.filter(
-            (p) =>
-              p.name.toLowerCase().includes(q) ||
-              p.categoryName.toLowerCase().includes(q) ||
-              p.subtitle.toLowerCase().includes(q) ||
-              p.description.toLowerCase().includes(q)
-          );
-        }
+          normalized.meta = {
+            page: Number(meta.page || params.page || 1),
+            limit: Number(meta.limit || params.limit || 20),
+            total: Number(meta.total || normalized.length),
+            pages: Number(meta.pages || Math.ceil((meta.total || normalized.length) / (meta.limit || 20))),
+            hasMore: meta.page && meta.pages ? meta.page < meta.pages : false,
+          };
 
-        if (params.isTrending) {
-          filtered = filtered.filter((p) => p.isTrending);
-        }
+          return normalized;
+        } catch (e) {
+          let filtered = PRODUCTS.map(normalizeProduct);
 
-        if (params.isBestSeller) {
-          filtered = filtered.filter((p) => p.isBestSeller);
-        }
+          if (params.categoryId && params.categoryId !== 'cat_all') {
+            filtered = filtered.filter((p) => p.categoryId === params.categoryId);
+          }
 
-        if (params.isNewArrival) {
-          filtered = filtered.filter((p) => p.isNewArrival);
-        }
+          if (params.query || params.search) {
+            const q = (params.query || params.search).toLowerCase().trim();
+            filtered = filtered.filter(
+              (p) =>
+                p.name.toLowerCase().includes(q) ||
+                p.categoryName.toLowerCase().includes(q) ||
+                p.subtitle.toLowerCase().includes(q) ||
+                p.description.toLowerCase().includes(q)
+            );
+          }
 
-        return filtered;
-      }
-    }, DEFAULT_CACHE_TTL, forceRefresh);
+          if (params.isTrending) filtered = filtered.filter((p) => p.isTrending);
+          if (params.isBestSeller) filtered = filtered.filter((p) => p.isBestSeller);
+          if (params.isNewArrival) filtered = filtered.filter((p) => p.isNewArrival);
+
+          filtered.meta = {
+            page: 1,
+            limit: filtered.length,
+            total: filtered.length,
+            pages: 1,
+            hasMore: false,
+          };
+
+          return filtered;
+        }
+      },
+      DEFAULT_CACHE_TTL,
+      forceRefresh
+    );
+  },
+
+  /**
+   * Get Consolidated Home Feed in 1 fast network trip (Cached 2 minutes)
+   */
+  async getHomeFeed(forceRefresh = false) {
+    return cachedFetch(
+      'home_feed_all_v3',
+      async () => {
+        try {
+          const response = await api.get('/products/home-feed', { timeout: 4000 });
+          const data = response.data || response;
+          if (data && typeof data === 'object') {
+            const trending = Array.isArray(data.trending) && data.trending.length > 0
+              ? data.trending.map(normalizeProduct)
+              : DEFAULT_HOME_FEED.trending;
+            const bestSellers = Array.isArray(data.bestSellers) && data.bestSellers.length > 0
+              ? data.bestSellers.map(normalizeProduct)
+              : DEFAULT_HOME_FEED.bestSellers;
+            const newArrivals = Array.isArray(data.newArrivals) && data.newArrivals.length > 0
+              ? data.newArrivals.map(normalizeProduct)
+              : DEFAULT_HOME_FEED.newArrivals;
+            const specialOffers = Array.isArray(data.specialOffers) && data.specialOffers.length > 0
+              ? data.specialOffers.map(normalizeProduct)
+              : SPECIAL_OFFERS;
+            const banners = Array.isArray(data.banners) && data.banners.length > 0
+              ? data.banners
+              : PROMOTIONAL_BANNERS;
+
+            const result = {
+              trending,
+              bestSellers,
+              newArrivals,
+              specialOffers,
+              banners,
+              featured: data.featured || [],
+            };
+
+            // Pre-seed individual cache entries so subsequent category/listing transitions hit instant memory cache
+            memoryCache.set(`products_${JSON.stringify({ isTrending: true })}`, {
+              data: result.trending,
+              timestamp: Date.now(),
+            });
+            memoryCache.set(`products_${JSON.stringify({ isBestSeller: true })}`, {
+              data: result.bestSellers,
+              timestamp: Date.now(),
+            });
+            memoryCache.set(`products_${JSON.stringify({ isNewArrival: true })}`, {
+              data: result.newArrivals,
+              timestamp: Date.now(),
+            });
+
+            return result;
+          }
+          return DEFAULT_HOME_FEED;
+        } catch (e) {
+          // Instant resilient return - no blocking or repeated failing calls
+          return DEFAULT_HOME_FEED;
+        }
+      },
+      2 * 60 * 1000,
+      forceRefresh
+    );
+  },
+
+  /**
+   * Fast Unified Home Feed: Combines categories, banners, and home products in 1 fast pass
+   * Saves to disk cache and triggers image prefetching
+   */
+  async getFastUnifiedHomeFeed(forceRefresh = false) {
+    try {
+      const [cats, bans, feed] = await Promise.all([
+        this.getCategories(forceRefresh),
+        this.getBanners(forceRefresh),
+        this.getHomeFeed(forceRefresh),
+      ]);
+
+      const trending = feed?.trending?.length ? feed.trending : DEFAULT_HOME_FEED.trending;
+      const bestSellers = feed?.bestSellers?.length ? feed.bestSellers : DEFAULT_HOME_FEED.bestSellers;
+      const newArrivals = feed?.newArrivals?.length ? feed.newArrivals : DEFAULT_HOME_FEED.newArrivals;
+      const specialOffers = feed?.specialOffers?.length ? feed.specialOffers : SPECIAL_OFFERS;
+      const finalBanners = bans?.length ? bans : (feed?.banners?.length ? feed.banners : PROMOTIONAL_BANNERS);
+
+      const flashDeals = trending.slice(0, 4).map((p, idx) => ({
+        ...p,
+        flashDiscount: 50 + idx * 5,
+        flashPrice: Math.round(p.price * 0.7),
+        claimedPercent: 65 + idx * 8,
+      }));
+      const topRated = bestSellers.slice(0, 6);
+      const recommended = newArrivals.slice(0, 6);
+
+      const consolidated = {
+        categories: cats?.length ? cats : CATEGORIES,
+        banners: finalBanners,
+        trending,
+        bestSellers,
+        newArrivals,
+        specialOffers,
+        featuredSellers: FEATURED_SELLERS,
+        popularBrands: POPULAR_BRANDS,
+        flashDeals,
+        topRated,
+        recommended,
+      };
+
+      // Persist to disk cache
+      saveCachedHomeDataToDisk(consolidated);
+
+      // Prefetch images into OS disk/memory cache for instant rendering
+      prefetchHomeImages(finalBanners, cats);
+
+      return consolidated;
+    } catch (e) {
+      return DEFAULT_HOME_FEED;
+    }
   },
 
   /**
@@ -257,7 +531,8 @@ export const productService = {
    */
   async getFlashDeals(forceRefresh = false) {
     return cachedFetch('flash_deals', async () => {
-      const all = await this.getProducts({}, forceRefresh);
+      const feed = await this.getHomeFeed(forceRefresh).catch(() => null);
+      const all = feed?.trending?.length ? feed.trending : await this.getProducts({ limit: 8 }, forceRefresh);
       return all.slice(0, 4).map((p, idx) => ({
         ...p,
         flashDiscount: 50 + idx * 5,
@@ -272,8 +547,9 @@ export const productService = {
    */
   async getTopRatedProducts(forceRefresh = false) {
     return cachedFetch('top_rated_products', async () => {
-      const all = await this.getProducts({}, forceRefresh);
-      return all.filter((p) => p.rating >= 4.7).slice(0, 6);
+      const feed = await this.getHomeFeed(forceRefresh).catch(() => null);
+      const candidates = feed?.bestSellers?.length ? feed.bestSellers : await this.getProducts({ limit: 12 }, forceRefresh);
+      return candidates.filter((p) => p.rating >= 4.5).slice(0, 6);
     }, DEFAULT_CACHE_TTL, forceRefresh);
   },
 
@@ -282,8 +558,9 @@ export const productService = {
    */
   async getRecommendedProducts(forceRefresh = false) {
     return cachedFetch('recommended_products', async () => {
-      const all = await this.getProducts({}, forceRefresh);
-      return [...all].reverse().slice(0, 6);
+      const feed = await this.getHomeFeed(forceRefresh).catch(() => null);
+      const candidates = feed?.newArrivals?.length ? feed.newArrivals : await this.getProducts({ limit: 12 }, forceRefresh);
+      return [...candidates].reverse().slice(0, 6);
     }, DEFAULT_CACHE_TTL, forceRefresh);
   },
 
@@ -291,87 +568,21 @@ export const productService = {
    * Get Featured Multi-Vendor Sellers
    */
   async getFeaturedSellers() {
-    return [
-      {
-        id: 'seller_1',
-        name: 'Jaipur Heritage Handlooms',
-        slug: 'jaipur-handlooms',
-        city: 'Jaipur, Rajasthan',
-        rating: 4.9,
-        reviewCount: 1420,
-        badge: 'Top Rated Vendor',
-        logo: 'https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?auto=format&fit=crop&w=200&q=80',
-        banner: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=600&q=80',
-        specialty: 'Pure Bandhani Silk, Bagru Block Prints & Jaipuri AC Quilts',
-      },
-      {
-        id: 'seller_2',
-        name: 'Banaras Silk Weavers Guild',
-        slug: 'banaras-silks',
-        city: 'Varanasi, Uttar Pradesh',
-        rating: 4.8,
-        reviewCount: 980,
-        badge: 'GI Tag Verified',
-        logo: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
-        banner: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=600&q=80',
-        specialty: 'Authentic Katan Silk, Zari Brocades & Hand-dyed Dupattas',
-      },
-      {
-        id: 'seller_3',
-        name: 'Kutch Kutumb Handicrafts',
-        slug: 'kutch-crafts',
-        city: 'Bhuj, Gujarat',
-        rating: 4.7,
-        reviewCount: 650,
-        badge: 'Artisan Cooperative',
-        logo: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=200&q=80',
-        banner: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=600&q=80',
-        specialty: 'Mirror Embroidered Shawls, Terracotta Pottery & Bell Crafts',
-      },
-    ];
+    return FEATURED_SELLERS;
   },
 
   /**
    * Get Popular Brands
    */
   async getPopularBrands() {
-    return [
-      { id: 'b1', name: 'FabIndia', category: 'Ethnic Wear', discount: 'Up to 40% OFF', logo: '🏮' },
-      { id: 'b2', name: 'Manyavar', category: 'Wedding Couture', discount: 'Min 30% OFF', logo: '👑' },
-      { id: 'b3', name: 'Biba', category: 'Women Kurtas', discount: 'Flat 50% OFF', logo: '👗' },
-      { id: 'b4', name: 'Titan', category: 'Watches', discount: 'Up to 35% OFF', logo: '⌚' },
-      { id: 'b5', name: 'Khadi Gram', category: 'Organic Textiles', discount: 'Special ₹499 Store', logo: '🌿' },
-      { id: 'b6', name: 'Boat', category: 'Audio & Gadgets', discount: 'Up to 60% OFF', logo: '🎧' },
-    ];
+    return POPULAR_BRANDS;
   },
 
   /**
    * Get Special Offers & Bank Deals
    */
   async getSpecialOffers() {
-    return [
-      {
-        id: 'off_1',
-        title: 'HDFC & SBI Bank Offer',
-        description: 'Instant 10% Discount on Credit & Debit Cards up to ₹1,500',
-        code: 'BANK10',
-        color: '#1565C0',
-      },
-      {
-        id: 'off_2',
-        title: 'Flat ₹200 Cashback via UPI',
-        description: 'Valid on Google Pay, PhonePe, Paytm on orders above ₹999',
-        code: 'UPI200',
-        color: '#2E7D32',
-      },
-      {
-        id: 'off_3',
-        title: 'Free Express Shipping Across India',
-        description: 'Automatic waiver on orders above ₹499 to 19,000+ PIN codes',
-        code: 'FREESHIP',
-        color: '#E64A19',
-      },
-    ];
+    return SPECIAL_OFFERS;
   },
 
   /**

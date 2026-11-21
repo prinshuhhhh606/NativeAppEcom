@@ -8,7 +8,6 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const net = require('net');
 
 function findAdb() {
   const localAppData = process.env.LOCALAPPDATA || '';

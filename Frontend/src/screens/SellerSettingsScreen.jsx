@@ -9,14 +9,11 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import AppIcon from '../components/AppIcon';
 import SellerHeader from '../components/seller/SellerHeader';
 import sellerService from '../services/sellerService';
-import { useAuth } from '../context/AuthContext';
 import styles from './SellerSettingsScreen.styles';
 
 export const SellerSettingsScreen = ({ navigation }) => {
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 

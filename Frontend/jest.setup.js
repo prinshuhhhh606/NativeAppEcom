@@ -99,3 +99,58 @@ jest.mock('react-native-webview', () => {
 });
 
 jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter');
+
+jest.mock('socket.io-client', () => {
+  const EventEmitter = require('events');
+  class MockSocket extends EventEmitter {
+    constructor() {
+      super();
+      this.id = 'mock-socket-id-123';
+      this.connected = false;
+    }
+    on(event, listener) {
+      super.on(event, listener);
+      if (event === 'connect' && this.connected) {
+        process.nextTick(() => {
+          if (this.connected) listener();
+        });
+      }
+      return this;
+    }
+    connect() {
+      this.connected = true;
+      process.nextTick(() => {
+        this.emit('connect');
+      });
+      return this;
+    }
+    disconnect() {
+      this.connected = false;
+      this.emit('disconnect', 'io client disconnect');
+      return this;
+    }
+    close() {
+      return this.disconnect();
+    }
+  }
+
+  const io = jest.fn(() => {
+    const socket = new MockSocket();
+    process.nextTick(() => {
+      socket.connected = true;
+      socket.emit('connect');
+    });
+    return socket;
+  });
+
+  return { io, default: io };
+});
+
+afterEach(() => {
+  try {
+    const { socketService } = require('./src/services/socketService');
+    if (socketService && typeof socketService.disconnect === 'function') {
+      socketService.disconnect();
+    }
+  } catch (e) {}
+});

@@ -43,7 +43,7 @@ export const PaymentScreen = ({ route, navigation }) => {
         ]
       );
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigation]);
 
   // Safety validation: never proceed without a valid selected address
   useEffect(() => {

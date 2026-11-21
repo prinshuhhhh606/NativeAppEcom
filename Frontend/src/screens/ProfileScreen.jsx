@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 export const ProfileScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const TAB_BAR_HEIGHT = 60;
-  const { user, logout, isAuthenticated, isAdmin, isSeller, isDelivery, role, switchMode, activeMode } = useAuth();
+  const { user, logout, isAuthenticated, isAdmin, isSeller, isDelivery, switchMode } = useAuth();
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to log out of AppsicaEcom?', [

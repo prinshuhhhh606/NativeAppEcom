@@ -3,9 +3,7 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import AppIcon from '../components/AppIcon';
 import SellerHeader from '../components/seller/SellerHeader';
@@ -22,8 +20,8 @@ export const SellerAccountingScreen = ({ navigation }) => {
   const [settlementData, setSettlementData] = useState(null);
 
   const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [selectedMonth] = useState(currentDate.getMonth() + 1);
+  const [selectedYear] = useState(currentDate.getFullYear());
 
   const fetchAccounting = useCallback(async () => {
     try {

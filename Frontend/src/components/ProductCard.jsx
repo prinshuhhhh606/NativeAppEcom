@@ -3,7 +3,7 @@ import { View, Text, Image, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import styles from './ProductCard.styles';
 import { Colors } from '../constants/colors';
-import { formatPrice, calculateDiscount, getImageUrl, getThumbnailUrl } from '../utils/helpers';
+import { formatPrice, calculateDiscount, getThumbnailUrl } from '../utils/helpers';
 import AppIcon from './AppIcon';
 import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
@@ -15,10 +15,8 @@ export const ProductCard = React.memo(({ product, onPress, onAddToCart, style, i
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
 
-  if (!product) return null;
-
-  const discountPercent = calculateDiscount(product.originalPrice, product.price);
-  const prodId = product.id || product._id;
+  const discountPercent = calculateDiscount(product?.originalPrice, product?.price);
+  const prodId = product?.id || product?._id;
   const isFavorited = propIsFavorited !== undefined ? propIsFavorited : isInWishlist(prodId);
 
   const handleWishlistPress = useCallback((e) => {
@@ -34,11 +32,12 @@ export const ProductCard = React.memo(({ product, onPress, onAddToCart, style, i
       );
       return;
     }
-    toggleWishlist(product);
+    if (product) toggleWishlist(product);
   }, [isAuthenticated, navigation, toggleWishlist, product]);
 
   const handleAddPress = useCallback((e) => {
     e?.stopPropagation?.();
+    if (!product) return;
     if (onAddToCart) {
       onAddToCart(product);
     } else {
@@ -46,19 +45,30 @@ export const ProductCard = React.memo(({ product, onPress, onAddToCart, style, i
     }
   }, [onAddToCart, addToCart, product]);
 
-  const imageUri = useMemo(() => getThumbnailUrl(product.images?.[0], 360), [product.images]);
+  const imageUri = useMemo(() => getThumbnailUrl(product?.images?.[0] || product?.image, 360), [product?.images, product?.image]);
+
+  const handleCardPress = useCallback(() => {
+    if (!product) return;
+    if (onPress) {
+      onPress(product);
+    } else {
+      navigation.navigate('ProductDetails', { productId: prodId, product });
+    }
+  }, [onPress, product, navigation, prodId]);
+
+  if (!product) return null;
 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      onPress={onPress}
+      onPress={handleCardPress}
       style={[styles.card, style]}>
-      <View style={styles.imageContainer}>
+      <View style={[styles.imageContainer, { backgroundColor: '#f1f5f9' }]}>
         <Image
-          source={{ uri: imageUri }}
+          source={{ uri: imageUri, cache: 'force-cache' }}
           style={styles.image}
-          fadeDuration={120}
-          defaultSource={{ uri: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80' }}
+          fadeDuration={100}
+          resizeMode="cover"
         />
 
         {discountPercent > 0 && (

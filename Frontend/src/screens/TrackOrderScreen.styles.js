@@ -112,8 +112,8 @@ export const styles = StyleSheet.create({
     marginTop: 2,
   },
   currentBadge: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#93C5FD',
+    backgroundColor: '#FCEEE6',
+    borderColor: '#EFC9B6',
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -124,7 +124,7 @@ export const styles = StyleSheet.create({
   currentBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#1D4ED8',
+    color: '#BA4C24',
     letterSpacing: 0.5,
   },
   activeTrackingCard: {

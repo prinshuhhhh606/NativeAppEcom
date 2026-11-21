@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles from './MyOrdersScreen.styles';
 import Header from '../components/Header';
 import AppIcon from '../components/AppIcon';
-import CustomButton from '../components/CustomButton';
 import Loading from '../components/Loading';
 import { formatPrice, formatDate } from '../utils/helpers';
 import { orderService } from '../services/orderService';
@@ -29,12 +28,31 @@ export const MyOrdersScreen = ({ navigation }) => {
   const { isAuthenticated, user } = useAuth();
 
   const [activeTab, setActiveTab] = useState('active'); // 'pending' | 'active' | 'completed' | 'cancelled'
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState(() => orderService.getOrdersMemoryCache());
+  const [loading, setLoading] = useState(() => orderService.getOrdersMemoryCache().length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState(null);
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+
+  // Instant disk cache hydration for 0-second screen render
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const cached = await orderService.getCachedOrdersFromDisk();
+        if (isMounted && cached && cached.length > 0) {
+          setOrders(cached);
+          setLoading(false);
+        }
+      } catch (err) {
+        // silent
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Load orders from backend with Stale-While-Revalidate caching
   const loadOrders = useCallback(async (isPullRefresh = false) => {
@@ -46,13 +64,15 @@ export const MyOrdersScreen = ({ navigation }) => {
 
     if (isPullRefresh) {
       setRefreshing(true);
-    } else if (orders.length === 0) {
+    } else if (orders.length === 0 && orderService.getOrdersMemoryCache().length === 0) {
       setLoading(true);
     }
 
     try {
       const data = await orderService.getOrders();
-      setOrders(data || []);
+      if (data && Array.isArray(data)) {
+        setOrders(data);
+      }
     } catch (e) {
       console.warn('[MyOrdersScreen] Error loading orders:', e?.message);
     } finally {
@@ -732,7 +752,7 @@ export const MyOrdersScreen = ({ navigation }) => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 {/* Official Receipt Card */}
                 <View style={styles.receiptInvoiceBox}>
-                  <Text style={styles.receiptBrandTitle}>BHARAT BAZAAR</Text>
+                  <Text style={styles.receiptBrandTitle}>CARTORA</Text>
                   <Text style={styles.receiptSubTitle}>
                     Pan-India Artisans & Multi-Vendor Marketplace
                   </Text>

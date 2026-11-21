@@ -87,16 +87,16 @@ export const styles = StyleSheet.create({
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
+    backgroundColor: Colors.accentSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     marginRight: 6,
   },
   ratingText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#2E7D32',
+    color: Colors.accentDark,
     marginRight: 2,
   },
   reviewsCount: {

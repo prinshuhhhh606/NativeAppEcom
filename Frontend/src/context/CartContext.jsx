@@ -150,7 +150,7 @@ export const CartProvider = ({ children }) => {
     } finally {
       setIsMerging(false);
     }
-  }, [cartItems, isAuthenticated]);
+  }, [cartItems]);
 
   /**
    * Reset cart on user logout (isolates user data)
@@ -234,7 +234,21 @@ export const CartProvider = ({ children }) => {
     if (!options.silent) {
       showCartSuccess({ product, isUpdate, quantity });
     }
-  }, [saveCartToStorage, isAuthenticated, showCartSuccess]);
+  }, [saveCartToStorage, isAuthenticated, showCartSuccess, showError]);
+
+  /**
+   * Remove item from cart
+   */
+  const removeFromCart = useCallback((productId, selectedVariant = {}) => {
+    setCartItems((prevItems) => {
+      const variantKey = JSON.stringify(selectedVariant);
+      const updated = prevItems.filter(
+        (item) => !(item.id === productId && JSON.stringify(item.selectedVariant) === variantKey)
+      );
+      saveCartToStorage(updated);
+      return updated;
+    });
+  }, [saveCartToStorage]);
 
   /**
    * Update Quantity
@@ -256,21 +270,7 @@ export const CartProvider = ({ children }) => {
       saveCartToStorage(updated);
       return updated;
     });
-  }, [saveCartToStorage]);
-
-  /**
-   * Remove item from cart
-   */
-  const removeFromCart = useCallback((productId, selectedVariant = {}) => {
-    setCartItems((prevItems) => {
-      const variantKey = JSON.stringify(selectedVariant);
-      const updated = prevItems.filter(
-        (item) => !(item.id === productId && JSON.stringify(item.selectedVariant) === variantKey)
-      );
-      saveCartToStorage(updated);
-      return updated;
-    });
-  }, [saveCartToStorage]);
+  }, [saveCartToStorage, removeFromCart]);
 
   /**
    * Clear all items in cart

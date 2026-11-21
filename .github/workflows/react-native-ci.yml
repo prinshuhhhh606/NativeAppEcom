@@ -1,6 +1,8 @@
-﻿name: React Native Android CI
+name: React Native Android CI
 
 on:
+  workflow_dispatch:
+
   push:
     branches: ["**"]
     paths:
@@ -38,13 +40,16 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platform-tools
-            platforms;android-37
-            build-tools;37.0.0
-            ndk;27.1.12297006
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK Packages
+        run: |
+          yes | sdkmanager --licenses || true
+          yes | sdkmanager --install "platform-tools" "platforms;android-37.0" "platforms;android-36" "build-tools;37.0.0" "ndk;27.1.12297006" || true
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -n "$SDK_ROOT" ] && [ -d "$SDK_ROOT/platforms/android-37.0" ] && [ ! -d "$SDK_ROOT/platforms/android-37" ]; then
+            ln -s "$SDK_ROOT/platforms/android-37.0" "$SDK_ROOT/platforms/android-37" || cp -r "$SDK_ROOT/platforms/android-37.0" "$SDK_ROOT/platforms/android-37"
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

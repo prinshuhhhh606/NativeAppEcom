@@ -1,10 +1,10 @@
 /**
- * Bharat Bazaar - Hindi Localization Dictionary
+ * Cartora - Hindi Localization Dictionary
  */
 export const hi = {
   common: {
-    appName: 'भारत बाजार',
-    appSubtitle: 'प्रामाणिक भारतीय ई-कॉमर्स',
+    appName: 'कार्टोरा (Cartora)',
+    appSubtitle: 'आधुनिक ई-कॉमर्स मार्केटप्लेस',
     searchPlaceholder: 'साड़ियां, हस्तशिल्प, मसाले और बहुत कुछ खोजें...',
     cancel: 'रद्द करें',
     confirm: 'पुष्टि करें',

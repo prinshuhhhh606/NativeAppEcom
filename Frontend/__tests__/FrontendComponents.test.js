@@ -36,6 +36,46 @@ jest.mock('../src/context/AuthContext', () => ({
   }),
 }));
 
+// Mock orderService to prevent live network calls during unit test renders
+jest.mock('../src/services/orderService', () => {
+  const mockOrder = {
+    _id: 'BBIN-987654',
+    orderId: 'BBIN-987654',
+    orderNumber: 'BBIN-987654',
+    orderStatus: 'out_for_delivery',
+    status: 'out_for_delivery',
+    deliveryOtp: '4521',
+    items: [{ name: 'Pure Cotton Kurta', price: 1299, quantity: 1 }],
+    deliveryPartner: {
+      name: 'Ramesh Kumar',
+      phone: '9876543210',
+      vehicleType: 'Bike',
+      vehicleNumber: 'RJ-14-1234',
+      rating: 4.9,
+    },
+    pickupLocation: { latitude: 26.9124, longitude: 75.7873, storeName: 'Jaipur Hub' },
+    destinationLocation: { latitude: 26.9015, longitude: 75.7421, fullName: 'Vikram Sharma' },
+    riderLocation: { latitude: 26.907, longitude: 75.765, heading: 45, speed: 25 },
+    timeline: [],
+    trackingTimeline: [],
+  };
+
+  const service = {
+    getOrderById: jest.fn().mockResolvedValue(mockOrder),
+    getLiveTracking: jest.fn().mockResolvedValue(mockOrder),
+    _enrichOrderWithLiveTracking: jest.fn().mockImplementation((o) => ({ ...mockOrder, ...(o || {}) })),
+    findOrderInCacheSync: jest.fn().mockReturnValue(null),
+    isOrderActive: jest.fn().mockReturnValue(true),
+    isOrderDelivered: jest.fn().mockReturnValue(false),
+    isOrderCancelled: jest.fn().mockReturnValue(false),
+  };
+
+  return {
+    orderService: service,
+    default: service,
+  };
+});
+
 describe('Frontend Validation & Helper Utilities', () => {
   test('validatePincode correctly validates Indian postal codes', () => {
     expect(validatePincode('110001').isValid).toBe(true);
@@ -154,6 +194,9 @@ describe('OTPVerificationScreen UI Elements', () => {
     expect(renderer).toBeDefined();
     const tree = renderer.toJSON();
     expect(tree).toBeTruthy();
+    await ReactTestRenderer.act(async () => {
+      if (renderer) renderer.unmount();
+    });
   });
 });
 
@@ -173,6 +216,9 @@ describe('EditProfileScreen UI Elements', () => {
     expect(renderer).toBeDefined();
     const tree = renderer.toJSON();
     expect(tree).toBeTruthy();
+    await ReactTestRenderer.act(async () => {
+      if (renderer) renderer.unmount();
+    });
   });
 });
 
@@ -202,17 +248,22 @@ describe('TrackOrderScreen UI & Live Tracking Elements', () => {
     };
 
     let renderer;
-    await ReactTestRenderer.act(() => {
+    await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <TrackOrderScreen
           route={{ params: { orderId: 'BBIN-987654', order: passedOrder } }}
           navigation={mockNavigation}
         />
       );
+      // Await async loadOrder and socket setup resolution
+      await Promise.resolve();
     });
 
     expect(renderer).toBeDefined();
     const tree = renderer.toJSON();
     expect(tree).toBeTruthy();
+    await ReactTestRenderer.act(async () => {
+      if (renderer) renderer.unmount();
+    });
   });
 });

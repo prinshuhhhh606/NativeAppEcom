@@ -31,7 +31,7 @@ export const ActionFeedbackProvider = ({ children }) => {
   /**
    * Trigger Add to Cart success popup
    */
-  const showCartSuccess = useCallback(({ product, isUpdate = false, quantity = 1 }) => {
+  const showCartSuccess = useCallback(({ product, isUpdate = false, _quantity = 1 }) => {
     if (dismissTimerRef.current) {
       clearTimeout(dismissTimerRef.current);
     }

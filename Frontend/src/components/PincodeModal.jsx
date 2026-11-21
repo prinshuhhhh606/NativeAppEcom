@@ -36,10 +36,6 @@ export const PincodeModal = () => {
     closePincodeModal,
     checkAndSetPincode,
     selectedPincode,
-    cityName,
-    stateName,
-    codAvailable,
-    deliveryDays,
     isLoadingPincode,
   } = useLocation();
 

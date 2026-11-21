@@ -35,7 +35,7 @@ export const SellerDashboardScreen = ({ navigation }) => {
     vacationMode: false,
   });
 
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isHindi, setIsHindi] = useState(false);
 
@@ -105,7 +105,7 @@ export const SellerDashboardScreen = ({ navigation }) => {
     );
   };
 
-  const storeName = user?.storeName || user?.businessName || 'Bharat Bazaar Merchant';
+  const storeName = user?.storeName || user?.businessName || 'Cartora Merchant';
   const ownerName = user?.name || user?.fullName || 'Store Owner';
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles from './DeliveryLoginScreen.styles';
 import CustomInput from '../components/CustomInput';
@@ -14,7 +14,7 @@ export const DeliveryLoginScreen = ({ navigation }) => {
 
   const [email, setEmail] = useState('delivery@appecom.in');
   const [password, setPassword] = useState('Delivery@12345');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe] = useState(true);
 
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');

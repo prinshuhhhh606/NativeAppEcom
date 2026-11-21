@@ -36,7 +36,7 @@ class LocationService {
         {
           title: 'Location Permission Required',
           message:
-            'Bharat Bazaar Fleet needs GPS access to share live delivery navigation and ETA with customers.',
+            'Cartora Fleet needs GPS access to share live delivery navigation and ETA with customers.',
           buttonPositive: 'Allow GPS Access',
           buttonNegative: 'Deny',
         }
@@ -58,7 +58,7 @@ class LocationService {
       throw new Error('Location permission denied by user.');
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       Geolocation.getCurrentPosition(
         (position) => {
           const coords = {

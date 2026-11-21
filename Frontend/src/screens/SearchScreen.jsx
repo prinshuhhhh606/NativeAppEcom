@@ -104,16 +104,16 @@ export const SearchScreen = ({ navigation }) => {
     handleSearch(tag);
   }, [handleSearch]);
 
-  const handleProductPress = useCallback((prodId) => {
-    navigation.navigate('ProductDetails', { productId: prodId });
+  const handleProductPress = useCallback((product) => {
+    const prodId = product.id || product._id;
+    navigation.navigate('ProductDetails', { productId: prodId, product });
   }, [navigation]);
 
   const renderProductItem = useCallback(({ item }) => {
-    const prodId = item.id || item._id;
     return (
       <ProductCard
         product={item}
-        onPress={() => handleProductPress(prodId)}
+        onPress={() => handleProductPress(item)}
       />
     );
   }, [handleProductPress]);

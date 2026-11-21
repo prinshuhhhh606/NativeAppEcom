@@ -1,6 +1,3 @@
-import React from 'react';
-import ReactTestRenderer from 'react-test-renderer';
-
 // Mock all native dependencies and contexts for screen audit
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({

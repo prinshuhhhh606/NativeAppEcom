@@ -38,7 +38,7 @@ export const WishlistProvider = ({ children }) => {
   const [wishlistItems, setWishlistItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const { isAuthenticated } = useAuth();
-  const { showWishlistSuccess, showError } = useActionFeedback();
+  const { showWishlistSuccess } = useActionFeedback();
   const prevAuthRef = useRef(isAuthenticated);
   const isSyncingRef = useRef(false);
   const hasInitialSyncedRef = useRef(false);

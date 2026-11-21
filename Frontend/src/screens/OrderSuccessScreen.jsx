@@ -51,7 +51,7 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
 
       <Text style={styles.title}>Order Confirmed!</Text>
       <Text style={styles.subtitle}>
-        Thank you for shopping with Bharat Bazaar.{'\n'}
+        Thank you for shopping with Cartora.{'\n'}
         Your package is being prepared for Pan India dispatch.
       </Text>
 

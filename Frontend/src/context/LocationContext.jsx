@@ -14,10 +14,6 @@ export const LocationProvider = ({ children }) => {
   const [isLoadingPincode, setIsLoadingPincode] = useState(false);
   const [isPincodeModalVisible, setIsPincodeModalVisible] = useState(false);
 
-  useEffect(() => {
-    loadSavedPincode();
-  }, []);
-
   const loadSavedPincode = useCallback(async () => {
     try {
       const saved = await pincodeService.getSavedPincode();

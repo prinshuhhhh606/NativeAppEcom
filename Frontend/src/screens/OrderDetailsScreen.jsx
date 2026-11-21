@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Image, Alert, Linking, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Image, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles from './OrderDetailsScreen.styles';
 import Header from '../components/Header';

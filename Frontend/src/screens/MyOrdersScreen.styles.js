@@ -4,7 +4,7 @@ import { Colors } from '../constants/colors';
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.background,
   },
   headerBanner: {
     backgroundColor: '#0F172A',

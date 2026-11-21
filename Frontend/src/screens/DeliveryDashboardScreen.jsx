@@ -62,7 +62,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
 
   // Real-Time GPS Tracking State
   const [isGpsTransmitting, setIsGpsTransmitting] = useState(false);
-  const [lastGpsPingTime, setLastGpsPingTime] = useState(null);
+  const [, setLastGpsPingTime] = useState(null);
   const [pingSecondsAgo, setPingSecondsAgo] = useState(null);
 
   // OTP Verification Modal
@@ -103,7 +103,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
       locationService.stopLocationTracking();
       setIsGpsTransmitting((prev) => (prev ? false : prev));
     }
-  }, [isApproved, isOnline, activeTaskId, activeTaskStatus]);
+  }, [isApproved, isOnline, activeTaskId, activeTaskStatus, activeTask]);
 
   // 2. Subscribe to location updates for live ping time indicator
   useEffect(() => {
@@ -211,7 +211,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
     if (!isApproved) {
       Alert.alert(
         'Account Verification Required',
-        `Your delivery rider account is currently "${kycStatus}". You can go on duty once verified and approved by Bharat Bazaar Admin.`
+        `Your delivery rider account is currently "${kycStatus}". You can go on duty once verified and approved by Cartora Admin.`
       );
       return;
     }
@@ -268,7 +268,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
   const handleOpenOtpModal = (task, mode = 'delivery') => {
     setActiveTaskForOtp(task);
     setOtpMode(mode);
-    setOtpInput(mode === 'pickup' ? task.pickupOtp || '7821' : task.deliveryOtp || '4521');
+    setOtpInput('');
   };
 
   const handleVerifyOtp = async () => {
@@ -469,7 +469,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
               <Text style={styles.pendingDesc}>
                 Welcome to the AppsicaEcom Fleet, {user?.name || 'Rider'}! Your driving license and vehicle details
                 have been securely registered in the central database. Your account is currently awaiting verification
-                and approval from Bharat Bazaar Admin. Once approved, you can go on duty and accept deliveries.
+                and approval from Cartora Admin. Once approved, you can go on duty and accept deliveries.
               </Text>
 
               <View style={styles.riderDetailsList}>
@@ -691,90 +691,94 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                     </View>
                   </View>
 
-                  {/* Vendor Store Info */}
-                  <View style={styles.taskStoreRow}>
-                    <View style={styles.taskStoreInfo}>
-                      <Text style={styles.taskStoreTitle}>
-                        🏪 {task.pickupAddress?.storeName || task.sellerStoreName || 'Vendor Warehouse'}
-                      </Text>
-                      <Text style={styles.taskStoreAddress} numberOfLines={2}>
-                        {task.pickupAddress?.addressLine || task.pickupAddress?.addressLine1 || 'Market Road'}, {task.pickupAddress?.city || 'Jaipur'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.callBtn}
-                      activeOpacity={0.8}
-                      onPress={() => handleCallStore(task.pickupAddress?.contactPhone || task.sellerPhone)}>
-                      <AppIcon name="call" size={13} color="#FFFFFF" />
-                      <Text style={styles.callBtnText}>Call Store</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Turn-by-Turn Navigation to Store (during pickup phase) */}
-                  {isPickupPhase && (
-                    <View style={styles.taskNavigationRow}>
+                  {/* Structured Vendor Store Pickup Box */}
+                  <View style={styles.storeCardBox}>
+                    <View style={styles.boxHeaderRow}>
+                      <View style={styles.pickupPill}>
+                        <AppIcon name="storefront" size={13} color="#0F766E" />
+                        <Text style={styles.pickupPillText}>Pickup Location</Text>
+                      </View>
                       <TouchableOpacity
-                        style={styles.navBtn}
+                        style={styles.callStoreBtn}
+                        activeOpacity={0.8}
+                        onPress={() => handleCallStore(task.pickupAddress?.contactPhone || task.sellerPhone)}>
+                        <AppIcon name="call" size={12} color="#0D9488" />
+                        <Text style={styles.callStoreBtnText}>Call Store</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={styles.storeNameText}>
+                      {task.pickupAddress?.storeName || task.sellerStoreName || 'Vendor Warehouse'}
+                    </Text>
+                    <Text style={styles.storeAddressText} numberOfLines={2}>
+                      {task.pickupAddress?.addressLine || task.pickupAddress?.addressLine1 || 'Market Road'}, {task.pickupAddress?.city || 'Jaipur'}
+                    </Text>
+
+                    {isPickupPhase && (
+                      <TouchableOpacity
+                        style={styles.storeNavBtn}
                         activeOpacity={0.85}
                         onPress={() => handleNavigateToStore(task)}>
-                        <AppIcon name="navigate-circle" size={16} color="#FFFFFF" />
-                        <Text style={styles.navBtnText}>🧭 Navigate to Store (Google Maps)</Text>
+                        <AppIcon name="navigate" size={15} color="#2563EB" />
+                        <Text style={styles.storeNavBtnText}>🧭 Navigate to Store (Google Maps)</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Structured Customer Delivery Box */}
+                  <View style={styles.customerCardBox}>
+                    <View style={styles.boxHeaderRow}>
+                      <View style={styles.dropPill}>
+                        <AppIcon name="person" size={13} color="#C2410C" />
+                        <Text style={styles.dropPillText}>Customer Delivery</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.callCustomerBtn}
+                        activeOpacity={0.8}
+                        onPress={() =>
+                          handleCallCustomer(
+                            task.customerPhone ||
+                            task.deliveryAddress?.mobileNumber
+                          )
+                        }>
+                        <AppIcon name="call" size={12} color="#EA580C" />
+                        <Text style={styles.callCustomerBtnText}>Call Customer</Text>
                       </TouchableOpacity>
                     </View>
-                  )}
 
-                  {/* Customer Drop Location Info */}
-<View style={styles.taskCustomerRow}>
-  <Text style={styles.taskCustomerName}>
-    👤 {
-      typeof task.customerName === 'string'
-        ? task.customerName
-        : typeof task.deliveryAddress?.fullName === 'string'
-          ? task.deliveryAddress.fullName
-          : 'Customer'
-    }
-  </Text>
+                    <Text style={styles.customerNameText}>
+                      {typeof task.customerName === 'string'
+                        ? task.customerName
+                        : typeof task.deliveryAddress?.fullName === 'string'
+                          ? task.deliveryAddress.fullName
+                          : 'Customer'}
+                    </Text>
 
-  <TouchableOpacity
-    style={styles.callBtn}
-    activeOpacity={0.8}
-    onPress={() =>
-      handleCallCustomer(
-        task.customerPhone ||
-        task.deliveryAddress?.mobileNumber
-      )
-    }>
-    <AppIcon name="call" size={13} color="#FFFFFF" />
-    <Text style={styles.callBtnText}>Call Customer</Text>
-  </TouchableOpacity>
-</View>
+                    <View style={styles.addressIconRow}>
+                      <AppIcon name="location-outline" size={14} color="#64748B" />
+                      <Text style={styles.customerAddressText} numberOfLines={2}>
+                        {[
+                          task.deliveryAddress?.addressLine1,
+                          task.deliveryAddress?.addressLine,
+                          task.deliveryAddress?.city,
+                          task.deliveryAddress?.state,
+                          task.deliveryAddress?.pinCode,
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || 'Address not available'}
+                      </Text>
+                    </View>
 
-                <View style={styles.taskAddressRow}>
-  <AppIcon name="location-outline" size={16} color="#94A3B8" />
-  <Text style={styles.taskAddressText}>
-    {[
-      task.deliveryAddress?.addressLine1,
-      task.deliveryAddress?.addressLine,
-      task.deliveryAddress?.city,
-      task.deliveryAddress?.state,
-      task.deliveryAddress?.pinCode,
-    ]
-      .filter(Boolean)
-      .join(', ') || 'Address not available'}
-  </Text>
-</View>
-                  {/* Turn-by-Turn Navigation to Customer (during delivery phase) */}
-                  {isDropPhase && (
-                    <View style={styles.taskNavigationRow}>
+                    {isDropPhase && (
                       <TouchableOpacity
-                        style={[styles.navBtn, styles.navBtnCustomer]}
+                        style={styles.customerNavBtn}
                         activeOpacity={0.85}
                         onPress={() => handleNavigateToCustomer(task)}>
-                        <AppIcon name="navigate-circle" size={16} color="#FFFFFF" />
-                        <Text style={styles.navBtnText}>🧭 Navigate to Customer Doorstep</Text>
+                        <AppIcon name="navigate" size={15} color="#059669" />
+                        <Text style={styles.customerNavBtnText}>🧭 Navigate to Customer Doorstep</Text>
                       </TouchableOpacity>
-                    </View>
-                  )}
+                    )}
+                  </View>
 
                   <View style={styles.taskCodRow}>
                     <Text style={styles.taskCodLabel}>
@@ -789,30 +793,23 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                     </Text>
                   </View>
 
-                  {/* Step Workflow Actions */}
+                  {/* Step Workflow Actions - Clean & Professional (No Pickup OTP text) */}
                   {isPickupPhase && (
-                    <View style={{ gap: 8 }}>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity
-                          style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0284C7' }]}
-                          activeOpacity={0.85}
-                          onPress={() => handleOpenOtpModal(task, 'pickup')}>
-                          <Text style={styles.taskActionBtnText}>1. Pickup OTP ({task.pickupOtp || '7821'})</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.taskActionBtn, { flex: 1, backgroundColor: '#0D9488' }]}
-                          activeOpacity={0.85}
-                          onPress={() => handleUpdateStatus(task, 'picked_up')}>
-                          <Text style={styles.taskActionBtnText}>Confirm Pickup</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Direct Start Out For Delivery */}
+                    <View style={styles.actionButtonGroup}>
                       <TouchableOpacity
-                        style={[styles.taskActionBtn, { backgroundColor: '#EA580C' }]}
+                        style={styles.primaryActionBtn}
+                        activeOpacity={0.85}
+                        onPress={() => handleUpdateStatus(task, 'picked_up')}>
+                        <AppIcon name="checkmark-circle" size={16} color="#FFFFFF" />
+                        <Text style={styles.primaryActionBtnText}>Confirm Package Pickup</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.secondaryActionBtn}
                         activeOpacity={0.85}
                         onPress={() => handleUpdateStatus(task, 'out_for_delivery')}>
-                        <Text style={styles.taskActionBtnText}>🚀 Start Out For Delivery</Text>
+                        <AppIcon name="bicycle" size={16} color="#FFFFFF" />
+                        <Text style={styles.secondaryActionBtnText}>Start Out For Delivery</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -822,7 +819,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                       style={[styles.taskActionBtn, { backgroundColor: '#EA580C' }]}
                       activeOpacity={0.85}
                       onPress={() => handleUpdateStatus(task, 'out_for_delivery')}>
-                      <Text style={styles.taskActionBtnText}>2. Start Delivery (Out For Delivery)</Text>
+                      <Text style={styles.taskActionBtnText}>🚀 Start Out For Delivery</Text>
                     </TouchableOpacity>
                   )}
 
@@ -831,7 +828,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
                       style={[styles.taskActionBtn, { backgroundColor: '#10B981' }]}
                       activeOpacity={0.85}
                       onPress={() => handleOpenOtpModal(task, 'delivery')}>
-                      <Text style={styles.taskActionBtnText}>3. Verify OTP & Complete Delivery</Text>
+                      <Text style={styles.taskActionBtnText}>🔑 Verify OTP & Complete Delivery</Text>
                     </TouchableOpacity>
                   )}
 
@@ -862,18 +859,12 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>
-              {otpMode === 'pickup' ? 'Enter Vendor Pickup OTP' : 'Enter Customer Delivery OTP'}
+              {otpMode === 'pickup' ? 'Enter Store Pickup OTP' : 'Enter Customer Delivery OTP'}
             </Text>
             <Text style={styles.modalSubtitle}>
               {otpMode === 'pickup'
-                ? 'Ask store vendor for 4-digit package handover security code. (Demo test code: '
-                : 'Ask customer for 4-digit delivery security code. (Demo test code: '}
-              <Text style={{ color: '#38BDF8', fontWeight: '800' }}>
-                {otpMode === 'pickup'
-                  ? (activeTaskForOtp?.pickupOtp || '7821')
-                  : (activeTaskForOtp?.deliveryOtp || activeTaskForOtp?.otp || '4521')}
-              </Text>
-              )
+                ? 'Please ask the store seller/vendor for the 4-digit package handover security OTP code.'
+                : 'Please ask customer for 4-digit delivery security code upon doorstep handover.'}
             </Text>
 
             <TextInput
@@ -881,7 +872,7 @@ export const DeliveryDashboardScreen = ({ navigation }) => {
               value={otpInput}
               onChangeText={setOtpInput}
               keyboardType="number-pad"
-              maxLength={4}
+              maxLength={6}
               placeholder="••••"
               placeholderTextColor="#475569"
             />

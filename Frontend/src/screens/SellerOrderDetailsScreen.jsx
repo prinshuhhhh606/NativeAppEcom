@@ -144,7 +144,7 @@ export const SellerOrderDetailsScreen = ({ navigation, route }) => {
     return () => {
       socketService.unsubscribeFromOrder(targetId);
     };
-  }, [order._id, order.orderNumber]);
+  }, [order._id, order.orderId, order.orderNumber]);
 
   // Accept Order
   const handleAcceptOrder = async () => {
@@ -293,7 +293,7 @@ export const SellerOrderDetailsScreen = ({ navigation, route }) => {
     const custPhone = order.customerPhone || order.shippingAddress?.phone || order.shippingAddress?.mobileNumber || '';
     const summary = `
 ==============================
-BHARAT BAZAAR TAX INVOICE
+CARTORA TAX INVOICE
 ==============================
 Order ID: #${orderNumber}
 Date: ${new Date(order.createdAt).toLocaleDateString()}
